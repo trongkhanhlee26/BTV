@@ -1,0 +1,47 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Import CSV/XLSX{% endblock %}
+
+{% block content %}
+<h1>Import CSV/XLSX</h1>
+
+<p>Hỗ trợ 2 loại:</p>
+<ul>
+
+<li><b>Thí sinh</b>: cột bắt buộc <code>maNV, hoTen, chiNhanh, vung, donVi, email, nhom</code></li>
+
+  <li><b>Giám khảo</b>: cột bắt buộc <code>maNV, hoTen, email</code></li>
+</ul>
+
+<form method="post" enctype="multipart/form-data" style="margin-top: 1rem">
+  {% csrf_token %}
+  <div class="form-row">
+    <label>Chọn loại:</label>
+    <select name="target" required>
+      <option value="">-- chọn --</option>
+      <option value="thisinh">Thí sinh</option>
+      <option value="giamkhao">Giám khảo</option>
+    </select>
+  </div>
+
+  <div class="form-row" style="margin-top: .5rem">
+    <label>File (CSV hoặc XLSX):</label>
+    <input type="file" name="file" accept=".csv,.xlsx" required />
+  </div>
+
+  <div class="form-row" style="margin-top: .75rem">
+    <button type="submit" class="default">Import</button>
+    <a href="/admin/" class="button" style="margin-left:.5rem">Về trang Admin</a>
+  </div>
+</form>
+
+{% if messages %}
+  <ul class="messagelist" style="margin-top: 1rem">
+    {% for message in messages %}
+      <li class="{{ message.tags }}">{{ message }}</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+{% endblock %}

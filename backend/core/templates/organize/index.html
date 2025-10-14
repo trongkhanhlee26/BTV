@@ -1,0 +1,300 @@
+{% load static %}
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <title>Tổ chức cuộc thi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #111827;
+            --muted: #94a3b8;
+            --txt: #e5e7eb;
+            --brand: #f59e0b;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--txt);
+            font-family: system-ui, Segoe UI, Roboto, Inter, Arial
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 24px auto;
+            padding: 0 16px
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0 0 16px
+        }
+
+        .grid {
+            display: grid;
+            gap: 16px
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid #1f2937
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap
+        }
+
+        .row input,
+        .row select {
+            background: #0b1220;
+            color: var(--txt);
+            border: 1px solid #243045;
+            border-radius: 8px;
+            padding: 8px 10px;
+            outline: none
+        }
+
+        .row label {
+            font-size: 14px;
+            color: var(--muted)
+        }
+
+        .btn {
+            background: var(--brand);
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: #111827;
+            font-weight: 600;
+            cursor: pointer
+        }
+
+        .muted {
+            color: var(--muted);
+            font-size: 13px
+        }
+
+        .ct {
+            border-left: 4px solid var(--brand);
+            padding-left: 12px;
+            margin: 8px 0
+        }
+
+        .vt {
+            margin: 8px 0 8px 12px;
+            border-left: 3px solid #334155;
+            padding-left: 12px
+        }
+
+        .bt {
+            margin: 6px 0 6px 24px;
+            border-left: 2px dashed #334155;
+            padding-left: 12px
+        }
+
+        .code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            background: #0b1220;
+            border: 1px solid #1f2937;
+            padding: 2px 6px;
+            border-radius: 6px
+        }
+
+        .status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 12px
+        }
+
+        .on {
+            background: #065f46
+        }
+
+        .off {
+            background: #4b5563
+        }
+
+        .sec-title {
+            font-size: 16px;
+            margin: 0 0 8px;
+            font-weight: 700
+        }
+
+        .hr {
+            height: 1px;
+            background: #1f2937;
+            margin: 12px 0
+        }
+
+        .msg {
+            margin: 0 0 8px
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Tổ chức cuộc thi</h1>
+        <div style="margin:6px 0">
+            <a href="/organize/competitions/" style="color:#93c5fd;text-decoration:none">→ Quản lý Cuộc thi
+                (thêm/sửa/xoá)</a>
+        </div>
+
+        {% if messages %}
+        {% for m in messages %}<div class="msg">{{ m }}</div>{% endfor %}
+        {% endif %}
+
+        <div class="grid">
+            <!-- Tạo Cuộc thi -->
+            <div class="card">
+                <div class="sec-title">Tạo cuộc thi</div>
+                <form method="post" class="row" style="align-items:center;gap:12px">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="create_ct">
+                    <label>Tên cuộc thi</label>
+                    <input type="text" name="tenCuocThi" placeholder="VD: Cuộc thi tay nghề 2025" required>
+                    <label>Trạng thái</label>
+                    <label style="display:flex;align-items:center;gap:6px">
+                        <input type="checkbox" name="trangThai"> Bật
+                    </label>
+                    <button class="btn" type="submit">Tạo</button>
+                </form>
+            </div>
+
+            <!-- Danh sách Cuộc thi -->
+            <div class="card">
+                <div class="sec-title">Danh sách cuộc thi</div>
+                <div class="muted">Nhấn “Thêm vòng thi” / “Thêm bài thi” để bổ sung nhanh.</div>
+                <div class="hr"></div>
+
+                {% for ct in cuoc_this %}
+                <div class="ct">
+                    <div>
+                        <span class="code">{{ ct.ma }}</span>
+                        &nbsp;{{ ct.tenCuocThi }}
+                        &nbsp;<span class="status {{ ct.trangThai|yesno:'on,off' }}">
+                                <span class="dot"></span>
+                                {{ ct.trangThai|yesno:"Đang bật,Đang tắt" }}
+                                </span>
+
+                    </div>
+
+                    <!-- Form thêm Vòng thi cho Cuộc thi này -->
+                    <form method="post" class="row" style="margin-top:8px;align-items:center;gap:10px">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="create_vt">
+                        <input type="hidden" name="cuocThi_id" value="{{ ct.id }}">
+                        <label>Thêm vòng thi</label>
+                        <input type="text" name="tenVongThi" placeholder="VD: Vòng loại" required>
+                        <button class="btn" type="submit">Thêm vòng</button>
+                    </form>
+
+                    {% for vt in ct.vong_thi.all %}
+                    <div class="vt">
+                        <div><span class="code">{{ vt.ma }}</span> {{ vt.tenVongThi }}</div>
+
+                        <!-- Form thêm Bài thi cho Vòng này -->
+                        <form method="post" class="row" style="margin-top:8px;align-items:center;gap:10px">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="create_bt">
+                            <input type="hidden" name="vongThi_id" value="{{ vt.id }}">
+                            <label>Thêm bài thi</label>
+                            <input type="text" name="tenBaiThi" placeholder="VD: Lý thuyết" required>
+                            <label>Phương thức chấm</label>
+                            <select name="phuongThucCham">
+                                <option value="TIME">Chấm theo thời gian</option>
+                                <option value="TEMPLATE">Chấm theo mẫu</option>
+                                <option value="POINTS" selected>Chấm theo thang điểm</option>
+                            </select>
+                            <label class="js-max-label">Điểm tối đa</label>
+                            <input type="number" name="cachChamDiem" min="1" step="1" placeholder="VD: 10"
+                                class="js-max-input" style="width:100px">
+                            <button class="btn" type="submit">Thêm bài</button>
+                        </form>
+
+                        {% for bt in vt.bai_thi.all %}
+                        <div class="bt">
+                            <div>
+                                <span class="code">{{ bt.ma }}</span>
+                                {{ bt.tenBaiThi }}
+                                {% if bt.phuongThucCham == "POINTS" %}
+                                — Thang điểm (Max: {{ bt.cachChamDiem }})
+                                {% elif bt.phuongThucCham == "TIME" %}
+                                — Theo thời gian
+                                <button class="btn" data-open-time-modal data-btid="{{ bt.id }}"
+                                    data-rules='[{% for r in bt.time_rules.all %}{"start":{{ r.start_seconds }},"end":{{ r.end_seconds }},"score":{{ r.score }}}{% if not forloop.last %},{% endif %}{% endfor %}]'
+                                    Cấu hình thang thời gian
+                                </button>
+
+                                {% if bt.time_rules.all|length %}
+                                <div class="muted" style="margin-top:4px;font-size:12px">
+                                    {% for r in bt.time_rules.all %}
+                                    {{ r.start_seconds }}s–{{ r.end_seconds }}s: +{{ r.score }}đ{% if not forloop.last
+                                    %};
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+
+                                {% else %}
+                                — Theo mẫu
+                                {% endif %}
+
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="bt muted">Chưa có bài thi.</div>
+                        {% endfor %}
+                    </div>
+                    {% empty %}
+                    <div class="vt muted">Chưa có vòng thi.</div>
+                    {% endfor %}
+                </div>
+                <div class="hr"></div>
+                {% empty %}
+                <div class="muted">Chưa có cuộc thi nào. Hãy tạo cuộc thi đầu tiên ở trên.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <p class="muted" style="margin-top:10px">
+            Tip: Mã (CTxxx/VTxxx/BTxxx) sẽ tự sinh khi tạo mới.
+        </p>
+    </div>
+
+    <!-- MODAL cấu hình thời gian -->
+    <div id="time-modal"
+        style="display:none; position:fixed; inset:0; background:#0009; z-index:1000; align-items:center; justify-content:center;">
+        <div
+            style="background:#111827; border:1px solid #1f2937; border-radius:12px; padding:16px; width:640px; max-width:95vw">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                <div class="sec-title">Cấu hình thang thời gian</div>
+                <button id="tm-close" class="btn" type="button">Đóng</button>
+            </div>
+            <form id="tm-form" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="config_time_rules">
+                <input type="hidden" name="baiThi_id" id="tm-btid">
+                <input type="hidden" name="time_rules_json" id="tm-json">
+                <div class="row" style="margin-bottom:8px">
+                    <button class="btn" type="button" id="tm-add">+ Thêm dòng</button>
+                </div>
+                <div id="tm-rows" class="grid" style="gap:8px"></div>
+                <div class="row" style="margin-top:12px; justify-content:flex-end">
+                    <button class="btn" type="submit">Lưu cấu hình</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{% static 'core/organize.js' %}"></script>
+</body>
+
+</html>

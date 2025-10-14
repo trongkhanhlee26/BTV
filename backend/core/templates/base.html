@@ -1,0 +1,90 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}ExamSite{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* nền toàn trang, ảnh fill màn hình */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: url("{% static 'pics/bk3.jpg' %}") center/cover no-repeat fixed;
+            z-index: -2;
+        }
+
+        /* lớp phủ mờ nhẹ để chữ dễ đọc */
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.15);
+            z-index: -1;
+        }
+
+        /* hiệu ứng glass */
+        .glass {
+            background: rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+        }
+    </style>
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body class="min-h-screen text-white">
+    <!-- NAVBAR -->
+    <nav class="glass fixed top-0 left-0 right-0 z-50">
+        <div class="mx-auto max-w-7xl px-4">
+            <div class="flex h-14 items-center justify-between">
+                <a href="/" class="font-semibold tracking-wide">ExamSite</a>
+                <div class="flex items-center gap-1">
+                    {% with p=request.path %}
+                    <a href="/score" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
+              {% if p|slice:':7' == '/score/' or p == '/score' %} bg-white/10 {% endif %}">
+                        Chấm điểm
+                    </a>
+                    <a href="/organize" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
+              {% if p|slice:':9' == '/organize' %} bg-white/10 {% endif %}">
+                        Tạo cuộc thi
+                    </a>
+                    <a href="/ranking" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
+              {% if p|slice:':9' == '/ranking' %} bg-white/10 {% endif %}">
+                        Xếp hạng
+                    </a>
+                    <a href="/manage" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
+              {% if p|slice:':7' == '/manage' %} bg-white/10 {% endif %}">
+                        Quản lý
+                    </a>
+                    {% endwith %}
+                    + <!-- trạng thái đăng nhập -->
+                    {% if request.session.judge_email %}
+                    <span class="ml-2 px-3 py-2 rounded-xl bg-white/10">
+                        {{ request.session.judge_email }}
+                    </span>
+                    <a href="/logout" class="ml-1 px-3 py-2 rounded-xl hover:bg-white/10 transition">
+                        Đăng xuất
+                    </a>
+                    {% else %}
+                    <a href="/login" class="ml-2 px-3 py-2 rounded-xl hover:bg-white/10 transition">
+                        Đăng nhập
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- CONTENT WRAPPER -->
+    <main class="pt-16 pb-10">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+
+</html>

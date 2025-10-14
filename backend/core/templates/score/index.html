@@ -1,0 +1,403 @@
+<!-- after: thay toàn bộ nội dung -->
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8">
+  <title>Chấm điểm</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: system-ui, Segoe UI, Roboto
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 24px auto;
+      padding: 0 16px
+    }
+
+    h1 {
+      font-size: 22px;
+      margin: 0 0 12px
+    }
+
+    input,
+    button {
+      font-family: inherit
+    }
+
+    .input {
+      background: #1e293b;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 8px;
+      min-width: 260px
+    }
+
+    .btn {
+      background: #f59e0b;
+      color: #111827;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-weight: 600;
+      cursor: pointer
+    }
+
+    .card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 12px
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px
+    }
+
+    th,
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #1f2937;
+      text-align: left
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #334155
+    }
+
+    .muted {
+      color: #94a3b8
+    }
+
+    .suggest {
+      background: #0b1220;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      margin-top: 6px;
+      max-height: 220px;
+      overflow: auto
+    }
+
+    .suggest a {
+      display: block;
+      color: #e5e7eb;
+      text-decoration: none;
+      padding: 8px 10px;
+      border-bottom: 1px solid #1f2937
+    }
+
+    .suggest a:hover {
+      background: #1f2937
+    }
+
+    .score-input {
+      width: 80px;
+      background: #1e293b;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 6px
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      background: #16a34a;
+      color: #081016;
+      padding: 10px 14px;
+      border-radius: 10px;
+      display: none
+    }
+
+    .toast.error {
+      background: #ef4444;
+      color: white
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <!-- after -->
+    <h1>Chấm điểm (Cuộc thi)</h1>
+
+    {% if competitions and competitions|length > 1 %}
+    <form method="get" class="row" style="margin-bottom:8px">
+      {% if selected_ts %}<input type="hidden" name="ts" value="{{ selected_ts.maNV }}">{% endif %}
+      <label>Cuộc thi:</label>
+      <select name="ct" onchange="this.form.submit()" class="input" style="min-width:320px">
+        {% for c in competitions %}
+          <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
+
+          {{ c.ma }} — {{ c.tenCuocThi }} {% if c.trangThai %}(Đang bật){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+
+
+    {% if not ct %}
+    <div class="card">Chưa có <b>Cuộc thi</b> nào được bật. Vào <a href="/organize/">/organize/</a> để tạo/bật.</div>
+    {% else %}
+    <!-- Tìm thí sinh -->
+    <div class="card">
+      <div class="row">
+        <label>Nhập mã NV hoặc họ tên:</label>
+        <form method="get" class="row" onsubmit="/*keep*/">
+          <input class="input" type="text" name="q" value="{{ query }}" placeholder="VD: TS001 hoặc Nguyễn Văn A">
+          <button class="btn" type="submit">Tìm</button>
+        </form>
+      </div>
+
+      {% if suggestions %}
+      <div class="suggest">
+        {% for s in suggestions %}
+        <a href="/score/?ts={{ s.maNV }}&ct={{ selected_ct_id }}">{{ s.maNV }} — {{ s.hoTen }} {% if s.donVi %} ({{ s.donVi }}){% endif %}</a>
+
+        {% endfor %}
+      </div>
+      {% elif query %}
+      <div class="muted" style="margin-top:6px">Không tìm thấy thí sinh phù hợp.</div>
+      {% endif %}
+    </div>
+
+    <!-- Phiếu điểm -->
+    {% if selected_ts %}
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div><b>Thí sinh:</b> {{ selected_ts.maNV }} — {{ selected_ts.hoTen }}</div>
+          <div class="muted">Đơn vị: {{ selected_ts.donVi }} | Chi nhánh: {{ selected_ts.chiNhanh }}</div>
+        </div>
+        <div>Tổng tối đa: <span class="badge">{{ total_max }}</span></div>
+      </div>
+
+      {% if structure and total_max > 0 %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:40%">Vòng thi – Bài thi</th>
+            <th>Điểm (0..Max)</th>
+            <th>Max</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for block in structure %}
+          {% for b in block.bai_list %}
+          <tr>
+            <td>{{ b.ten }} <span class="muted">({{ b.code }})</span></td>
+            <td>
+            {% if b.type == "TIME" %}
+              <label class="inline-flex items-center" style="gap:8px">
+                <input type="checkbox" name="done_{{ b.id }}" class="done-toggle" data-btid="{{ b.id }}">
+                <span>Hoàn thành</span>
+              </label>
+              <div class="time-wrap mt-2 hidden" data-btid="{{ b.id }}"
+                  data-rules='{{ b.rules|safe }}'>
+                <input class="score-input time-input" type="text" placeholder="mm:ss hoặc giây"
+                      name="time_{{ b.id }}" disabled>
+                <span class="ml-2 muted">Điểm: <b class="time-score" id="preview_{{ b.id }}">0</b> / {{ b.max }}</span>
+              </div>
+            {% else %}
+              <input class="score-input" type="number" min="0" max="{{ b.max }}" step="1"
+                    name="score_{{ b.id }}"
+                    value="{% if b.current != None %}{{ b.current|floatformat:0 }}{% endif %}">
+            {% endif %}
+          </td>
+          <td>{{ b.max }}</td>
+
+
+          </tr>
+          {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="saveBtn" type="button" data-ct="{{ selected_ct_id }}">Lưu điểm</button>
+
+      </div>
+      {% else %}
+      <!-- after -->
+      <div class="muted">
+        Cuộc thi hiện chưa có Vòng/Bài thi.
+        {% if competitions and competitions|length > 1 %}
+        Bạn có thể đổi sang cuộc khác ở phần “Cuộc thi” phía trên.
+        {% endif %}
+        <a href="/organize/" style="color:#93c5fd">Thêm Vòng/Bài</a>
+      </div>
+
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+(function () {
+  const saveBtn = document.getElementById('saveBtn');
+  if (!saveBtn) return;
+
+  function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' error' : '');
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 2500);
+  }
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+
+  // Toggle TIME: chỉ nhập khi tick
+  document.querySelectorAll('.done-toggle').forEach(cb => {
+    const id = cb.dataset.btid;
+    const wrap = document.querySelector(`.time-wrap[data-btid="${id}"]`);
+    const input = wrap ? wrap.querySelector('.time-input') : null;
+    const pv = document.getElementById(`preview_${id}`);
+    const update = () => {
+      if (!wrap || !input) return;
+      if (cb.checked) {
+        wrap.classList.remove('hidden');
+        input.removeAttribute('disabled');
+        input.focus();
+      } else {
+        wrap.classList.add('hidden');
+        input.setAttribute('disabled', 'disabled');
+        input.value = '';
+        if (pv) pv.textContent = '0';
+      }
+    };
+    cb.addEventListener('change', update);
+    update();
+  });
+
+  // Preview điểm TIME theo rules
+  function parseSeconds(v){
+    if(!v) return null;
+    v = v.trim();
+    if(v.includes(':')){
+      const [m, s] = v.split(':');
+      const mm = parseInt(m,10), ss = parseInt(s,10);
+      if (Number.isNaN(mm) || Number.isNaN(ss)) return null;
+      return mm*60 + ss;
+    }
+    const f = parseFloat(v);
+    return Number.isNaN(f) ? null : Math.floor(f);
+  }
+  document.querySelectorAll('.time-wrap').forEach(wrap => {
+    const rules = JSON.parse(wrap.dataset.rules || '[]');
+    const input = wrap.querySelector('.time-input');
+    const out = wrap.querySelector('.time-score');
+    if (!input || !out) return;
+    input.addEventListener('input', () => {
+      const sec = parseSeconds(input.value);
+      let score = 0;
+      if (sec !== null){
+        for (const r of rules){
+          if (sec >= r.s && sec <= r.e){ score = r.score; break; }
+        }
+      }
+      out.textContent = score;
+    });
+  });
+
+  // Lưu: gửi ct_id + scores + done + times
+  saveBtn.addEventListener('click', async function () {
+    console.log('[save] clicked');  // <-- thêm
+    const payload = {
+      thiSinh: "{{ selected_ts.maNV }}",
+      ct_id: saveBtn.dataset.ct || null,
+      scores: {}, done: {}, times: {}
+    };
+
+
+    // POINTS
+    document.querySelectorAll('input[name^="score_"]').forEach(i => {
+      if (i.value !== '') payload.scores[i.name.replace('score_', '')] = i.value;
+    });
+
+    // TIME: bắt buộc nhập khi tick
+    let hasTimeError = false;
+    document.querySelectorAll('.done-toggle').forEach(cb => {
+      const id = cb.dataset.btid;
+      payload.done[id] = cb.checked;
+      if (cb.checked) {
+        const t = document.querySelector(`input[name="time_${id}"]`);
+        if (!t || t.value.trim()==='') {
+          hasTimeError = true;
+          t && t.classList.add('border-red-500');
+        } else {
+          t.classList.remove('border-red-500');
+          payload.times[id] = t.value.trim();
+        }
+      }
+    });
+    if (hasTimeError){
+      showToast('Vui lòng nhập thời gian cho các bài đã tick Hoàn thành (mm:ss hoặc giây).', true);
+      return;
+    }
+
+    try {
+      const res = await fetch(window.location.pathname, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        showToast(data.message || 'Có lỗi khi lưu.', true);
+        if (data.errors?.length) console.warn('Errors:', data.errors);
+        return;
+      }
+
+      // cập nhật preview/inputs theo điểm đã lưu
+      const saved = data.saved_scores || {};
+      Object.keys(saved).forEach(id => {
+        const pv = document.getElementById(`preview_${id}`);
+        if (pv) pv.textContent = saved[id];
+        const inp = document.querySelector(`input[name="score_${id}"]`);
+        if (inp) inp.value = saved[id];
+      });
+
+      showToast(data.message || 'Đã lưu.');
+    } catch (e) {
+      console.error(e);
+      showToast('Không thể kết nối server.', true);
+    }
+  });
+})();
+</script>
+
+</body>
+
+</html>

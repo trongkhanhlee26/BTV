@@ -1,0 +1,151 @@
+<!-- after: thay toàn bộ bằng bảng pivot -->
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background: #0f172a;
+            color: #e5e7eb;
+            font-family: system-ui, Segoe UI, Roboto
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 24px auto;
+            padding: 0 16px
+        }
+
+        h1 {
+            font-size: 22px;
+            margin: 0 0 14px
+        }
+
+        select {
+            background: #1e293b;
+            color: #e5e7eb;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 8px;
+            min-width: 220px
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #1f2937;
+            text-align: left;
+            vertical-align: middle
+        }
+
+        th.sticky {
+            position: sticky;
+            top: 0;
+            background: #0f172a;
+            z-index: 1
+        }
+
+        thead th {
+            font-weight: 700
+        }
+
+        .code {
+            font-family: ui-monospace, Menlo, monospace;
+            background: #0b1220;
+            border: 1px solid #1f2937;
+            padding: 2px 6px;
+            border-radius: 6px
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #334155
+        }
+
+        .muted {
+            color: #94a3b8
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        <form method="get" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <label>Chọn cuộc thi:</label>
+            <select name="ct" onchange="this.form.submit()">
+                {% for ct in cuoc_this %}
+                <option value="{{ ct.id }}" {% if selected_ct and ct.id == selected_ct.id %}selected{% endif %}>
+                    {{ ct.ma }} — {{ ct.tenCuocThi }} {% if ct.trangThai %}(Đang bật){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+
+        </form>
+
+
+        {% if not selected_ct %}
+        <p class="muted" style="margin-top:10px">Chưa có cuộc thi nào.</p>
+        {% else %}
+        {% if not columns %}
+        <p class="muted" style="margin-top:10px">Cuộc thi này chưa có bài thi.</p>
+        {% else %}
+        <div style="margin-top:8px" class="muted">
+            Tổng tối đa: <span class="badge">{{ total_max }}</span>
+        </div>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="sticky">Mã NV</th>
+                    <th class="sticky">Họ tên</th>
+                    <th class="sticky">Đơn vị</th>
+                    {% for c in columns %}
+                    <th class="sticky">
+                        <div class="code">{{ c.code }}</div>
+                        <div>{{ c.title }}</div>
+                        <div class="muted">Max: {{ c.max }}</div>
+                    </th>
+                    {% endfor %}
+                    <th class="sticky">Tổng / {{ total_max }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.maNV }}</td>
+                    <td>{{ r.hoTen }}</td>
+                    <td>{{ r.donVi }}</td>
+                    {% for score in r.scores %}
+                    <td>{{ score|floatformat:2 }}</td>
+                    {% endfor %}
+                    <td><b>{{ r.total|floatformat:2 }}</b> / {{ total_max }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{{ columns|length|add:'4' }}" class="muted">
+                        Chưa có thí sinh phù hợp.
+                    </td>
+                </tr>
+
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% endif %}
+    </div>
+</body>
+
+</html>
