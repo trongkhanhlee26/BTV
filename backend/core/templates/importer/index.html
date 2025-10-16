@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Import CSV/XLSX{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-5xl px-4">
+    <div class="glass rounded-2xl border border-white/30 shadow-lg">
+        <div class="p-6 md:p-8">
+            <h1 class="text-2xl font-semibold">Import CSV/XLSX</h1>
+            <p class="mt-2 text-white/80 text-sm">
+                Hỗ trợ:
+                <span class="font-medium">Thí sinh</span> (cột: maNV, hoTen, chiNhanh, vung, donVi, email, nhom) •
+                <span class="font-medium">Giám khảo</span> (cột: maNV, hoTen, email)
+            </p>
+
+            <form class="mt-6 space-y-5" method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-sm mb-1">Cuộc thi</label>
+                    <select name="maCT" required
+                        class="w-full rounded-xl bg-white/90 text-slate-800 border border-white/50 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300">
+                        <option value="">-- chọn cuộc thi --</option>
+                        {% for ct in cuocthi_list %}
+                        <option value="{{ ct.ma }}">{{ ct.ma }} - {{ ct.tenCuocThi }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm mb-1">Chọn loại</label>
+                    <select name="target" required
+                        class="w-full rounded-xl bg-white/90 text-slate-800 border border-white/50 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300">
+                        <option value="">-- chọn --</option>
+                        <option value="thisinh">Thí sinh</option>
+                        <option value="giamkhao">Giám khảo</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm mb-2">Tệp dữ liệu (CSV/XLSX)</label>
+                    <input id="file-input" type="file" name="file" accept=".csv,.xlsx" required class="sr-only">
+                    <label id="dropzone" for="file-input" class="flex flex-col items-center justify-center gap-2 text-center cursor-pointer
+              rounded-2xl border-2 border-dashed border-white/50 bg-white/10 p-6
+              hover:bg-white/20 transition">
+
+                        <div class="text-sm">
+                            <span class="font-medium">Kéo & thả</span> hoặc <span class="underline">chọn tệp</span>
+                        </div>
+
+                        <div id="file-name" class="text-xs text-white/80"></div>
+                    </label>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="inline-flex items-center rounded-xl bg-sky-500 hover:bg-sky-600 active:bg-sky-700
+                         px-4 py-2 font-medium text-white">
+                        Import
+                    </button>
+                    <a href="/admin/" class="ml-2 text-white/80 hover:text-white">Về trang Admin</a>
+                </div>
+            </form>
+
+            {% if messages %}
+            <ul class="mt-5 space-y-2">
+                {% for message in messages %}
+                {% if "success" in message.tags %}
+                <li class="rounded-xl bg-green-500/20 border border-green-400/40 px-4 py-2 text-green-100">{{ message }}
+                </li>
+                {% elif "error" in message.tags or "warning" in message.tags %}
+                <li class="rounded-xl bg-red-500/20 border border-red-400/40 px-4 py-2 text-red-100">{{ message }}</li>
+                {% else %}
+                <li class="rounded-xl bg-white/10 border border-white/20 px-4 py-2">{{ message }}</li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-6 grid md:grid-cols-2 gap-4">
+        <div class="glass rounded-2xl border border-white/30 p-5">
+            <h2 class="font-semibold">Hướng dẫn nhanh</h2>
+            <ol class="mt-2 list-decimal pl-5 text-white/80 text-sm space-y-1">
+                <li>Chọn loại dữ liệu.</li>
+                <li>Chọn hoặc kéo thả tệp CSV/XLSX.</li>
+                <li>Nhấn <span class="font-medium">Import</span>.</li>
+            </ol>
+            <p class="mt-3 text-xs text-white/70">CSV nên mã hóa UTF-8. Header có thể có/không dấu — hệ thống đã map tự
+                động.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+    const input = document.getElementById('file-input');
+    const nameBox = document.getElementById('file-name');
+    input.addEventListener('change', () => {
+        nameBox.textContent = input.files.length ? input.files[0].name : '';
+    });
+</script>
+
+{% endblock %}

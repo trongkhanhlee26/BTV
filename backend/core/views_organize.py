@@ -97,6 +97,20 @@ def organize_view(request):
                 messages.success(request, f"Đã lưu {len(cleaned)} dòng thang thời gian cho {bt.ma}.")
                 return redirect(request.path)
 
+# NEW: bật/tắt trạng thái cuộc thi ngay trên trang organize
+            if action == "toggle_ct":
+                ct_id = request.POST.get("cuocThi_id")
+                try:
+                    ct = CuocThi.objects.get(id=ct_id)
+                except CuocThi.DoesNotExist:
+                    messages.error(request, "Cuộc thi không tồn tại.")
+                    return redirect(request.path)
+                # checkbox gửi 'on' khi được tick
+                ct.trangThai = request.POST.get("trangThai") == "on"
+                ct.save(update_fields=["trangThai"])
+                messages.success(request, f"{ct.ma}: đã {'bật' if ct.trangThai else 'tắt'}.")
+                return redirect(request.path)
+
             messages.error(request, "Hành động không hợp lệ.")
             return redirect(request.path)
 

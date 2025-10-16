@@ -21,7 +21,7 @@ from core.views_auth import login_view, logout_view
 from core.views_organize import organize_view, competition_list_view    
 from core.views_score import score_view
 from core.views_ranking import ranking_view
-from core.views_auth import login_view, logout_view
+
 urlpatterns = [\
     path("", home_view, name="home"),
     path("login/", login_view, name="login"),

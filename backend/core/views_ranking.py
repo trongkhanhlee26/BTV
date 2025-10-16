@@ -13,14 +13,18 @@ def _score_type(bt) -> str:
     return "POINTS"
 
 def ranking_view(request):
-    # 1) Chọn cuộc thi
+    # 1) Chọn cuộc thi (chỉ lấy cuộc thi đang bật)
     ct_id = request.GET.get("ct")
-    cuoc_this = CuocThi.objects.all().order_by("-trangThai", "id")
+    cuoc_this = CuocThi.objects.filter(trangThai=True).order_by("-id")  # chỉ ACTIVE
+
     selected_ct = None
     if ct_id:
+        # Nếu ct_id không phải ACTIVE thì bỏ qua
         selected_ct = cuoc_this.filter(id=ct_id).first()
+    # fallback: lấy cái ACTIVE đầu tiên
     if not selected_ct:
-        selected_ct = cuoc_this.filter(trangThai=True).first() or cuoc_this.first()
+        selected_ct = cuoc_this.first()
+
 
     if not selected_ct:
         return render(request, "ranking/index.html", {

@@ -3,7 +3,7 @@ from django.db import models
 # Create your models here.
 from django.db import models
 from django.utils import timezone
-from django.db.models import Max
+from django.db.models import Max, SET_NULL
 from django.core.validators import MinValueValidator
 # Helper để sinh mã tự động CTxxx, VTxxx, BTxxx
 def generate_code(model, prefix):
@@ -22,6 +22,14 @@ class ThiSinh(models.Model):
     donVi = models.CharField(max_length=100, blank=True, null=True)
     email = models.EmailField(unique=True)
     nhom = models.CharField(max_length=50)
+
+    # NEW: gắn cuộc thi (nullable) + lưu sẵn mã CT để lọc nhanh
+    cuocThi = models.ForeignKey('CuocThi', null=True, blank=True, on_delete=SET_NULL, related_name='thi_sinh')
+    maCuocThi = models.CharField(max_length=10, blank=True, null=True, editable=False, db_index=True)
+
+    def save(self, *args, **kwargs):
+        self.maCuocThi = self.cuocThi.ma if getattr(self, 'cuocThi', None) else None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.maNV} - {self.hoTen}"

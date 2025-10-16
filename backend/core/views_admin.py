@@ -10,7 +10,7 @@ from django.db import transaction
 from django.core.files.uploadedfile import InMemoryUploadedFile, TemporaryUploadedFile
 from openpyxl import load_workbook
 
-from .models import ThiSinh, GiamKhao
+from .models import ThiSinh, GiamKhao, CuocThi
 
 REQUIRED_COLUMNS = {
     "thisinh": ["maNV", "hoTen", "chiNhanh", "vung", "donVi", "email", "nhom"],
@@ -121,7 +121,13 @@ def _read_csv(file, expected_cols):
 def import_view(request):
     if request.method == "POST":
         target = request.POST.get("target")  # thisinh | giamkhao
+        selected_ma_ct = request.POST.get("maCT")  # NEW
         f = request.FILES.get("file")
+
+        cuocthi_obj = None
+        if selected_ma_ct:
+            cuocthi_obj = CuocThi.objects.filter(ma=selected_ma_ct).first()
+
         if target not in REQUIRED_COLUMNS:
             messages.error(request, "Vui lòng chọn loại dữ liệu hợp lệ.")
             return redirect(request.path)
@@ -157,8 +163,10 @@ def import_view(request):
                             donVi=r["donVi"],
                             email=r["email"],
                             nhom=r["nhom"],
+                            cuocThi=cuocthi_obj,  # NEW: gán theo lựa chọn
                         )
                     )
+
 
                     created += int(is_created)
                     updated += int(not is_created)
@@ -181,4 +189,9 @@ def import_view(request):
         messages.success(request, f"Import xong: thêm {created}, cập nhật {updated}, bỏ qua {skipped}.")
         return redirect(request.path)
 
-    return render(request, "admin/import_csv.html", {})
+    return render(
+    request,
+    "importer/index.html",
+    {"cuocthi_list": CuocThi.objects.all().values("ma", "tenCuocThi").order_by("ma")}
+)
+

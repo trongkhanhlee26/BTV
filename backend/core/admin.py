@@ -3,7 +3,22 @@ from .models import ThiSinh, GiamKhao, CuocThi, VongThi, BaiThi, PhieuChamDiem
 
 @admin.register(ThiSinh)
 class ThiSinhAdmin(admin.ModelAdmin):
-    list_display = ("maNV", "hoTen", "chiNhanh", "vung", "donVi", "nhom")
+    list_display = ("maNV", "hoTen", "chiNhanh", "vung", "donVi", "nhom", "ma_ct", "ten_cuoc_thi")
+    list_select_related = ("cuocThi",)  # tăng tốc truy vấn
+    list_filter = ("cuocThi",)          # lọc theo cuộc thi
+    search_fields = ("maNV", "hoTen", "maCuocThi")
+
+    # NEW: cột mã CT
+    def ma_ct(self, obj):
+        return obj.maCuocThi or (obj.cuocThi.ma if obj.cuocThi else "")
+    ma_ct.short_description = "maCT"
+    ma_ct.admin_order_field = "maCuocThi"
+
+    # NEW: cột tên cuộc thi
+    def ten_cuoc_thi(self, obj):
+        return obj.cuocThi.tenCuocThi if obj.cuocThi else ""
+    ten_cuoc_thi.short_description = "Cuộc thi"
+
     search_fields = ("maNV", "hoTen", "email", "vung", "donVi")
 
 @admin.register(GiamKhao)

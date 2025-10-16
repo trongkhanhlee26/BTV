@@ -88,7 +88,7 @@
             <select name="ct" onchange="this.form.submit()">
                 {% for ct in cuoc_this %}
                 <option value="{{ ct.id }}" {% if selected_ct and ct.id == selected_ct.id %}selected{% endif %}>
-                    {{ ct.ma }} — {{ ct.tenCuocThi }} {% if ct.trangThai %}(Đang bật){% endif %}
+                    {{ ct.ma }} — {{ ct.tenCuocThi }}
                 </option>
                 {% endfor %}
             </select>
