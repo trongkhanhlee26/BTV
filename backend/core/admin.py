@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import ThiSinh, GiamKhao, CuocThi, VongThi, BaiThi, PhieuChamDiem
+from .models import (
+    ThiSinh, GiamKhao, CuocThi, VongThi, BaiThi, PhieuChamDiem,
+    BaiThiTemplateSection, BaiThiTemplateItem,
+)
 
 @admin.register(ThiSinh)
 class ThiSinhAdmin(admin.ModelAdmin):
@@ -49,3 +52,15 @@ class PhieuChamDiemAdmin(admin.ModelAdmin):
     list_display = ("maPhieu", "thiSinh", "giamKhao", "baiThi", "diem", "maCuocThi", "updated_at")
     search_fields = ("thiSinh__maNV", "giamKhao__maNV", "baiThi__maBaiThi", "maCuocThi")
     list_filter = ("maCuocThi", "baiThi")
+    
+@admin.register(BaiThiTemplateSection)
+class BaiThiTemplateSectionAdmin(admin.ModelAdmin):
+    list_display = ("id", "baiThi", "stt", "title")
+    list_filter = ("baiThi",)
+    search_fields = ("title", "baiThi__ma")
+
+@admin.register(BaiThiTemplateItem)
+class BaiThiTemplateItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "section", "stt", "content", "max_score")
+    list_filter = ("section__baiThi",)
+    search_fields = ("content", "section__title", "section__baiThi__ma")

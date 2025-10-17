@@ -1,5 +1,5 @@
 
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -8,6 +8,7 @@ from django.db.models import Avg, Q
 from core.decorators import judge_required
 from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem
 import json
+
 def _pick_competition(preferred_id: int | None):
     """
     Chọn cuộc thi dùng cho chấm điểm:
@@ -34,19 +35,14 @@ def _session_judge(request):
     return None
 
 def _current_judge(request):
-    """
-    Xác định giám khảo hiện tại:
-   - Nếu có trong session → dùng.
-   - Nếu không tìm thấy → None (để view chặn truy cập)
-    """
     user = getattr(request, "user", None)
     if user and getattr(user, "email", None):
         gk = GiamKhao.objects.filter(email__iexact=user.email).first()
         if gk:
             return gk
-    return GiamKhao.objects.first()
     gk = _session_judge(request)
-    return gk
+    return gk or GiamKhao.objects.first()
+
 
 def _active_competition():
     """
@@ -87,7 +83,13 @@ def _load_form_data(selected_ts, ct, request):
 
     for vt in vongs:
         bais = []
-        for bt in BaiThi.objects.filter(vongThi=vt).order_by("id").prefetch_related("time_rules"):
+        
+        for bt in (
+            BaiThi.objects
+            .filter(vongThi=vt)
+            .order_by("id")
+            .prefetch_related("time_rules", "template_sections__items")
+        ):
             if _is_time(bt):
                 rules = list(bt.time_rules.all()) if hasattr(bt, "time_rules") else []
                 this_max = max([r.score for r in rules], default=0)
@@ -95,9 +97,19 @@ def _load_form_data(selected_ts, ct, request):
                 rules_payload = [{"s": r.start_seconds, "e": r.end_seconds, "score": r.score} for r in rules]
                 rules_json = json.dumps(rules_payload, ensure_ascii=False)
             else:
-                this_max = bt.cachChamDiem
-                b_type = "POINTS"
+                # TEMPLATE: tổng điểm = tổng item.max_score
+                if _is_template(bt):
+                    this_max = sum(
+                        i.max_score
+                        for s in bt.template_sections.all()
+                        for i in s.items.all()
+                    )
+                    b_type = "TEMPLATE"
+                else:  # POINTS
+                    this_max = bt.cachChamDiem
+                    b_type = "POINTS"
                 rules_json = "[]"
+
 
             # ➕ QUAN TRỌNG: cộng vào tổng tối đa
             total_max += this_max
@@ -123,10 +135,16 @@ def _score_type(bt) -> str:
     if v is None:
         return "POINTS"
     s = str(v).strip().upper()
-    # chấp nhận cả enum dạng số
+    # Nếu model lưu dạng số: 0=POINTS, 1=TEMPLATE, 2=TIME (bạn có thể đổi nếu mapping khác)
     if s in {"TIME", "2"}:
         return "TIME"
+    if s in {"TEMPLATE", "1"}:
+        return "TEMPLATE"
     return "POINTS"
+
+def _is_template(bt) -> bool:
+    return _score_type(bt) == "TEMPLATE"
+
 
 def _is_time(bt) -> bool:
     return _score_type(bt) == "TIME"
@@ -182,9 +200,26 @@ def score_view(request):
         if not judge:
             return JsonResponse({"ok": False, "message": "Bạn chưa đăng nhập giám khảo."}, status=401)
 
-        bai_qs  = BaiThi.objects.filter(vongThi__cuocThi=ct).prefetch_related("time_rules")
+        bai_qs = (
+            BaiThi.objects
+            .filter(vongThi__cuocThi=ct)
+            .prefetch_related("time_rules", "template_sections__items")
+        )
         bai_map = {b.id: b for b in bai_qs}
-        limit_map = {b.id: b.cachChamDiem for b in bai_qs}
+
+        def _tpl_max(b):
+            return sum(i.max_score for s in b.template_sections.all() for i in s.items.all())
+
+        limit_map = {}
+        for b in bai_qs:
+            if _is_template(b):
+                limit_map[b.id] = _tpl_max(b)
+            elif _is_points(b):
+                limit_map[b.id] = b.cachChamDiem
+            else:  # TIME
+                limit_map[b.id] = 0
+
+
 
         created = updated = 0
         errors = []
@@ -198,7 +233,8 @@ def score_view(request):
                 except ValueError:
                     continue
                 bt = bai_map.get(btid)
-                if not bt or not _is_points(bt):
+                # Cho phép nhập điểm cho cả POINTS và TEMPLATE (điểm tổng)
+                if not bt or not (_is_points(bt) or _is_template(bt)):
                     continue
                 try:
                     diem = int(raw)
@@ -269,30 +305,205 @@ def score_view(request):
     query = (request.GET.get("q") or "").strip()
     selected_code = (request.GET.get("ts") or "").strip()
     ct_param = request.GET.get("ct")
-    # gợi ý thí sinh theo q
+
+    # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}, lọc theo cuộc thi nếu có (VÀ phải đang bật)
+    if request.headers.get("x-requested-with") == "XMLHttpRequest" and request.GET.get("ajax") == "1" and query:
+        ct_for_suggest = CuocThi.objects.filter(trangThai=True, id=ct_param).first() if ct_param else None
+        base_qs = ThiSinh.objects.all()
+        if ct_for_suggest:
+            base_qs = base_qs.filter(cuocThi=ct_for_suggest)  # ← lọc theo mact ở ThiSinh
+        qs = base_qs.filter(hoTen__icontains=query).order_by("maNV").values("maNV", "hoTen")[:20]
+        return JsonResponse({"ok": True, "suggestions": list(qs)})
+
+
+
+    # gợi ý thí sinh (server-render) — lọc theo CT đang bật nếu có ct_param
     suggestions = []
     if query:
+        ct_for_suggest = CuocThi.objects.filter(trangThai=True, id=ct_param).first() if ct_param else None
+        base_qs = ThiSinh.objects.all()
+        if ct_for_suggest:
+            base_qs = base_qs.filter(cuocThi=ct_for_suggest)  # ← lọc theo mact ở ThiSinh
         suggestions = list(
-            ThiSinh.objects.filter(
+            base_qs.filter(
                 Q(maNV__icontains=query) | Q(hoTen__icontains=query)
-            ).order_by("maNV").values("maNV", "hoTen", "donVi")[:20]
+            ).order_by("maNV").values("maNV", "hoTen")[:20]
         )
+
+
+
 
     selected_ts = None
     if selected_code:
         selected_ts = ThiSinh.objects.filter(Q(maNV__iexact=selected_code) | Q(hoTen__iexact=selected_code)).first()
 
-    ct = _pick_competition(int(ct_param) if ct_param else None)
+    # Chỉ lấy danh sách CT đang bật...
+    cuoc_this_active = CuocThi.objects.filter(trangThai=True).order_by("-id")
+    ct = cuoc_this_active.filter(id=ct_param).first() if ct_param else cuoc_this_active.first()
+
+    # (tuỳ chọn) nếu có ct và selected_ts không thuộc ct đó (dựa theo mact ở ThiSinh) → bỏ chọn
+    if ct and selected_ts and getattr(selected_ts, "cuocThi_id", None) != ct.id:
+        selected_ts = None
+
+
+
     structure, total_max = _load_form_data(selected_ts, ct, request)
+
 
     return render(request, "score/index.html", {
         "ct": ct,
-        "selected_ct_id": ct.id if ct else None,  # NEW
+        "selected_ct_id": ct.id if ct else None,
         "structure": structure,
         "total_max": total_max,
         "query": query,
         "suggestions": suggestions,
         "selected_ts": selected_ts,
-        "competitions": list(CuocThi.objects.all().order_by("-trangThai", "-id")
-                            .values("id","ma","tenCuocThi","trangThai")),
- })
+        # chỉ hiển thị các cuộc thi đang bật
+        "competitions": list(
+            CuocThi.objects.filter(trangThai=True).order_by("-id")
+            .values("id","ma","tenCuocThi","trangThai")
+        ),
+    })
+
+    
+@judge_required
+@require_http_methods(["GET", "POST"])
+def score_template_api(request, btid: int):
+    bt = get_object_or_404(BaiThi.objects.prefetch_related("template_sections__items"), pk=btid)
+    if str(bt.phuongThucCham).upper() != "TEMPLATE":
+        return JsonResponse({"ok": False, "message": "Bài thi này không phải chấm theo mẫu."}, status=400)
+
+    if request.method == "GET":
+        try:
+            # kiểm tra loại bài là TEMPLATE
+            if not _is_template(bt):
+                return JsonResponse({"ok": False, "message": "Bài thi này không phải chấm theo mẫu."}, status=400)
+
+            sections = []
+            total_max = 0
+
+            # Lấy danh sách section theo 2 cách để tránh lệ thuộc related_name
+            try:
+                sec_qs = bt.template_sections.all().order_by("stt", "id")
+            except Exception:
+                try:
+                    from .models import BaiThiTemplateSection
+                    sec_qs = BaiThiTemplateSection.objects.filter(baiThi=bt).order_by("stt", "id")
+                except Exception:
+                    return JsonResponse({"ok": False, "message": "Không tìm thấy quan hệ sections cho bài thi này."}, status=500)
+
+            for s in sec_qs:
+                # Lấy danh sách item theo 2 cách (an toàn với related_name)
+                try:
+                    item_qs = s.items.all().order_by("stt", "id")
+                except Exception:
+                    try:
+                        from .models import BaiThiTemplateItem
+                        item_qs = BaiThiTemplateItem.objects.filter(section=s).order_by("stt", "id")
+                    except Exception:
+                        return JsonResponse({"ok": False, "message": f"Không tìm thấy items cho section {getattr(s,'id','?')}."}, status=500)
+
+                items = []
+                for i in item_qs:
+                    items.append({
+                        "id": i.id,
+                        "stt": getattr(i, "stt", None),
+                        "content": getattr(i, "content", ""),
+                        "max": int(getattr(i, "max_score", 0) or 0),
+                        "note": getattr(i, "note", "") or "",
+                    })
+                    total_max += int(getattr(i, "max_score", 0) or 0)
+
+                sections.append({
+                    "id": s.id,
+                    "stt": getattr(s, "stt", None),
+                    "title": getattr(s, "title", ""),
+                    "note": getattr(s, "note", "") or "",
+                    "items": items,
+                })
+
+            return JsonResponse({
+                "ok": True,
+                "bt": {"id": bt.id, "code": bt.ma, "name": bt.tenBaiThi},
+                "total_max": total_max,
+                "sections": sections,
+            })
+
+        except Exception as e:
+            # tránh 500 trả HTML → trả JSON để frontend hiển thị rõ lỗi
+            return JsonResponse({"ok": False, "message": f"Server error: {e.__class__.__name__}: {e}"}, status=500)
+
+
+    # POST: nhận điểm từng item, tính tổng và lưu vào Phiếu chấm (mức tổng)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return HttpResponseBadRequest("Invalid JSON")
+
+    ts_code = (payload.get("thiSinh") or "").strip()
+    ct_id   = payload.get("ct_id")
+    item_scores = payload.get("items") or {}   # {"<item_id>": <điểm số>}
+
+    # 1) Ưu tiên Mã NV
+    thi_sinh = ThiSinh.objects.filter(maNV__iexact=ts_code).first()
+
+    # 2) Nếu không có, cho phép gõ tên để lưu
+    if not thi_sinh:
+        # Ưu tiên trong cuộc thi hiện tại (nếu có)
+        by_name_qs = ThiSinh.objects.filter(hoTen__iexact=ts_code)
+        if ct_id:
+            ct_obj = _pick_competition(int(ct_id))
+            if ct_obj:
+                by_name_qs = by_name_qs.filter(phieuchamdiem__cuocThi=ct_obj).distinct() or by_name_qs
+        thi_sinh = by_name_qs.first()
+
+    if not thi_sinh:
+        return JsonResponse({"ok": False, "message": "Không tìm thấy thí sinh theo tên đã nhập."}, status=400)
+
+
+    # Chỉ chấm vào CT đang bật
+    ct = CuocThi.objects.filter(trangThai=True, id=ct_id).first() if ct_id else _active_competition()
+    if not ct:
+        return JsonResponse({"ok": False, "message": "Chưa có cuộc thi hợp lệ (chỉ chấm vào cuộc thi đang bật)."}, status=400)
+
+
+    judge = _current_judge(request)
+    if not judge:
+        return JsonResponse({"ok": False, "message": "Bạn chưa đăng nhập giám khảo."}, status=401)
+
+    # Map max cho từng item
+    max_map = {}
+    for s in bt.template_sections.all():
+        for i in s.items.all():
+            max_map[i.id] = int(i.max_score or 0)
+
+    # Chuẩn hóa & kẹp điểm trong khoảng 0..max
+    total = 0
+    normalized = {}
+    for raw_id, raw_val in item_scores.items():
+        try:
+            iid = int(raw_id)
+        except Exception:
+            continue
+        if iid not in max_map:
+            continue
+        try:
+            val = int(float(raw_val))
+        except Exception:
+            val = 0
+        val = max(0, min(val, max_map[iid]))
+        normalized[iid] = val
+        total += val
+
+    # Lưu tổng vào Phiếu chấm (chi tiết item nếu cần sẽ bổ sung model riêng sau)
+    with transaction.atomic():
+        obj, created = PhieuChamDiem.objects.update_or_create(
+            thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
+            defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=total)
+        )
+
+    return JsonResponse({
+        "ok": True,
+        "saved_total": total,
+        "message": f"Đã lưu {total} điểm cho {bt.ma} (TEMPLATE).",
+    })

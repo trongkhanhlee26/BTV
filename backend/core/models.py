@@ -92,13 +92,41 @@ class BaiThi(models.Model):
         return f"{self.ma} - {self.tenBaiThi}"
 class BaiThiTimeRule(models.Model):
     baiThi = models.ForeignKey(BaiThi, on_delete=models.CASCADE, related_name="time_rules")
-    # tính theo giây để đơn giản (UI sẽ nhập phút/giây rồi quy đổi)
     start_seconds = models.IntegerField()  # inclusive
     end_seconds = models.IntegerField()    # inclusive
     score = models.IntegerField()
 
     class Meta:
         ordering = ["start_seconds", "end_seconds", "score"]
+
+
+# NEW: Mẫu chấm theo "TEMPLATE" gắn với từng bài thi
+class BaiThiTemplateSection(models.Model):
+    baiThi = models.ForeignKey(BaiThi, on_delete=models.CASCADE, related_name="template_sections")
+    stt = models.PositiveIntegerField(default=1)  # thứ tự mục lớn
+    title = models.CharField(max_length=255)      # tên mục lớn (vd: Phần I: Kiến thức)
+    note = models.CharField(max_length=255, blank=True, null=True)  # ghi chú (nếu có)
+
+    class Meta:
+        ordering = ["baiThi_id", "stt"]
+
+    def __str__(self):
+        return f"{self.baiThi.ma} - [{self.stt}] {self.title}"
+
+
+class BaiThiTemplateItem(models.Model):
+    section = models.ForeignKey(BaiThiTemplateSection, on_delete=models.CASCADE, related_name="items")
+    stt = models.PositiveIntegerField(default=1)     # thứ tự mục con trong section
+    content = models.CharField(max_length=500)       # nội dung tiêu chí/câu hỏi
+    max_score = models.IntegerField(default=0)       # điểm tối đa cho mục con
+    note = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        ordering = ["section_id", "stt"]
+
+    def __str__(self):
+        return f"{self.section.baiThi.ma} - {self.section.title} - [{self.stt}] {self.content}"
+
 class PhieuChamDiem(models.Model):
     maPhieu = models.AutoField(primary_key=True)
     thiSinh = models.ForeignKey(ThiSinh, on_delete=models.CASCADE)

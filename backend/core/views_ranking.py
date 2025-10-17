@@ -72,8 +72,15 @@ def ranking_view(request):
     )
     score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in scores_qs}
 
-    # 4) Duyệt thí sinh → build hàng
-    ts_qs = ThiSinh.objects.all().order_by("maNV")
+    # 4) Chỉ lấy thí sinh thuộc đúng cuộc thi đã chọn
+    #    (điều kiện: có ít nhất một phiếu chấm trong cuộc thi này)
+    ts_qs = (
+        ThiSinh.objects
+        .filter(phieuchamdiem__cuocThi=selected_ct)  # lọc theo mact/ct đang xem
+        .distinct()
+        .order_by("maNV")
+    )
+
     rows = []
     for ts in ts_qs:
         row_scores, total = [], 0.0
@@ -88,6 +95,7 @@ def ranking_view(request):
             "scores": row_scores,
             "total": total,
         })
+
 
     # 5) Sắp xếp theo tổng giảm dần
     rows.sort(key=lambda r: (-r["total"], r["maNV"]))

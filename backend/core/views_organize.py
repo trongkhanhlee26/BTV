@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.db.models import Prefetch
-from .models import CuocThi, VongThi, BaiThi, BaiThiTimeRule
+from .models import CuocThi, VongThi, BaiThi, BaiThiTimeRule, BaiThiTemplateSection, BaiThiTemplateItem
 
 
 
@@ -97,7 +97,171 @@ def organize_view(request):
                 messages.success(request, f"Đã lưu {len(cleaned)} dòng thang thời gian cho {bt.ma}.")
                 return redirect(request.path)
 
-# NEW: bật/tắt trạng thái cuộc thi ngay trên trang organize
+                        # NEW: cấu hình thang thời gian
+            if action == "config_time_rules":
+                import json
+                btid = request.POST.get("baiThi_id")
+                ...
+                messages.success(request, f"Đã lưu {len(cleaned)} dòng thang thời gian cho {bt.ma}.")
+                return redirect(request.path)
+
+            # NEW: cấu hình mẫu chấm (import Excel) — chạy tại /organize/
+            if action == "config_template_upload":
+                btid = request.POST.get("baiThi_id")
+                f = request.FILES.get("template_file")
+                if not btid or not f:
+                    messages.error(request, "Thiếu bài thi hoặc tệp Excel.")
+                    return redirect(request.path)
+
+                try:
+                    bt = BaiThi.objects.get(id=btid)
+                except BaiThi.DoesNotExist:
+                    messages.error(request, "Bài thi không tồn tại.")
+                    return redirect(request.path)
+
+                if bt.phuongThucCham != "TEMPLATE":
+                    messages.error(request, "Bài thi này không dùng phương thức chấm theo mẫu.")
+                    return redirect(request.path)
+
+                # đọc Excel
+                try:
+                    from openpyxl import load_workbook
+                    wb = load_workbook(f, data_only=True)
+                    ws = wb[wb.sheetnames[0]]
+                except Exception:
+                    messages.error(request, "Không đọc được file Excel. Vui lòng dùng .xlsx hợp lệ.")
+                    return redirect(request.path)
+
+                # ===== NEW: Quét header linh hoạt theo mẫu "Danh Mục 1 | Danh Mục 2 | Điểm | (Điểm Chấm)" =====
+                header_row_idx = None
+                col_section = col_item = col_max = None
+
+                def norm(v):
+                    return str(v).strip().lower() if v is not None else ""
+
+                # 1) Tìm hàng header trong 30 hàng đầu
+                for ridx, row in enumerate(ws.iter_rows(min_row=1, max_row=30, values_only=True), start=1):
+                    texts = [norm(c) for c in row]
+                    # dò theo từ khoá Việt của mẫu
+                    for cidx, t in enumerate(texts):
+                        if t in ("danh mục 1", "mục lớn", "section"):
+                            col_section = cidx
+                        elif t in ("danh mục 2", "mục nhỏ", "item", "nội dung"):
+                            col_item = cidx
+                        elif ("điểm" in t) and ("chấm" not in t):
+                            # lấy cột "Điểm" (tối đa), nhưng bỏ "Điểm Chấm"
+                            col_max = cidx
+                    if col_section is not None and col_item is not None and col_max is not None:
+                        header_row_idx = ridx
+                        break
+
+                if header_row_idx is None:
+                    messages.error(request, "Không tìm thấy dòng tiêu đề (Danh Mục 1 / Danh Mục 2 / Điểm).")
+                    return redirect(request.path)
+
+                # 2) (Tuỳ chọn) Bắt 'Tổng điểm tối đa' ở khu vực trên cùng (đơn giản, không dùng cú pháp đặc biệt)
+                total_max = None
+                for ridx, row in enumerate(
+                        ws.iter_rows(min_row=1, max_row=min(header_row_idx, 10), min_col=1, max_col=20, values_only=False),
+                        start=1):
+                    for cidx, cell in enumerate(row, start=1):  # cidx là chỉ số 1-based
+                        t = norm(cell.value)
+                        if "tổng điểm tối đa" in t:
+                            # Tìm số ở tối đa 5 ô bên phải
+                            for off in range(1, 6):
+                                # chuyển về index 0-based cho list `row`
+                                idx = (cidx - 1) + off
+                                if idx >= len(row):
+                                    break
+                                val = row[idx].value
+                                if isinstance(val, (int, float)):
+                                    total_max = int(val)
+                                    break
+                            break
+                    if total_max is not None:
+                        break
+
+                # 3) Gom dữ liệu từ hàng ngay sau header
+                rows = []
+                for r in ws.iter_rows(min_row=header_row_idx + 1, values_only=True):
+                    v_section = norm(r[col_section]) if len(r) > col_section else ""
+                    v_item    = norm(r[col_item])    if len(r) > col_item    else ""
+                    v_max_raw = r[col_max]           if len(r) > col_max     else None
+
+                    # Dừng khi qua nhiều dòng trống liên tiếp (không cả section & item)
+                    if not v_section and not v_item and v_max_raw in (None, ""):
+                        # cho phép vài dòng trống xen kẽ, nhưng nếu muốn dừng hẳn thì dùng break
+                        continue
+
+                    # ép kiểu điểm tối đa
+                    mx = 0
+                    if isinstance(v_max_raw, (int, float)):
+                        mx = int(v_max_raw)
+                    else:
+                        try:
+                            mx = int(str(v_max_raw).strip()) if v_max_raw not in (None, "") else 0
+                        except Exception:
+                            mx = 0
+
+                    # bỏ các dòng placeholder như "nhập điểm" ở cột "Điểm Chấm" (không liên quan vì ta không đọc cột đó)
+                    if not v_section and not v_item:
+                        continue
+
+                    # NOTE: ghi nhận cả khi section có mà item trống (mục lớn không có lá)
+                    # nhưng để mô hình hiện tại, ta chỉ tạo item khi có cả 2
+                    if v_section and v_item:
+                        rows.append((v_section, v_item, mx, ""))
+
+                if not rows:
+                    messages.error(request, "Không tìm thấy dòng dữ liệu nào dưới tiêu đề (Danh Mục 1/2, Điểm).")
+                    return redirect(request.path)
+
+                # 4) (Tuỳ chọn) cập nhật điểm tối đa tổng nếu bạn có trường (bỏ qua nếu không có)
+                try:
+                    if total_max is not None and hasattr(bt, "diemToiDa"):
+                        bt.diemToiDa = int(total_max)
+                        bt.save(update_fields=["diemToiDa"])
+                except Exception:
+                    pass
+                # ===== END NEW =====
+
+
+                # lưu vào DB
+                from django.db import transaction
+                with transaction.atomic():
+                    bt.template_sections.all().delete()
+
+                    section_order, section_index = [], {}
+                    for (sect, _, _, _) in rows:
+                        if sect not in section_index:
+                            section_index[sect] = len(section_order) + 1
+                            section_order.append(sect)
+
+                    BaiThiTemplateSection.objects.bulk_create([
+                        BaiThiTemplateSection(baiThi=bt, stt=section_index[name], title=name)
+                        for name in section_order
+                    ])
+
+                    created_sections = {
+                        s.title: s for s in BaiThiTemplateSection.objects.filter(baiThi=bt)
+                    }
+                    counters = {name: 0 for name in section_order}
+                    items = []
+                    for (sect, item, mx, note) in rows:
+                        counters[sect] += 1
+                        items.append(BaiThiTemplateItem(
+                            section=created_sections[sect],
+                            stt=counters[sect],
+                            content=item,
+                            max_score=mx,
+                            note=(note or None),
+                        ))
+                    BaiThiTemplateItem.objects.bulk_create(items)
+
+                messages.success(request, f"Đã import {len(section_order)} mục lớn và {len(items)} mục nhỏ cho {bt.ma}.")
+                return redirect(request.path)
+
+            # NEW: bật/tắt trạng thái cuộc thi
             if action == "toggle_ct":
                 ct_id = request.POST.get("cuocThi_id")
                 try:
@@ -105,6 +269,7 @@ def organize_view(request):
                 except CuocThi.DoesNotExist:
                     messages.error(request, "Cuộc thi không tồn tại.")
                     return redirect(request.path)
+
                 # checkbox gửi 'on' khi được tick
                 ct.trangThai = request.POST.get("trangThai") == "on"
                 ct.save(update_fields=["trangThai"])
@@ -113,6 +278,8 @@ def organize_view(request):
 
             messages.error(request, "Hành động không hợp lệ.")
             return redirect(request.path)
+
+            
 
         except CuocThi.DoesNotExist:
             messages.error(request, "Cuộc thi không tồn tại.")
@@ -127,9 +294,18 @@ def organize_view(request):
     # GET: hiển thị danh sách CT → VT → BT
     cuoc_this = (
         CuocThi.objects
-        .prefetch_related(Prefetch("vong_thi", queryset=VongThi.objects.prefetch_related("bai_thi__time_rules")))
+        .prefetch_related(
+            Prefetch(
+                "vong_thi",
+                queryset=VongThi.objects.prefetch_related(
+                    "bai_thi__time_rules",
+                    "bai_thi__template_sections__items",  # NEW
+                )
+            )
+        )
         .order_by("-id")
     )
+
     return render(request, "organize/index.html", {"cuoc_this": cuoc_this})
 
 
@@ -170,6 +346,8 @@ def competition_list_view(request):
                 ct.delete()
                 messages.success(request, f"Đã xoá {code}.")
                 return redirect(request.path)
+                        # NEW: cấu hình mẫu chấm (import Excel)
+            
 
             messages.error(request, "Hành động không hợp lệ.")
             return redirect(request.path)

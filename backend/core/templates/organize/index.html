@@ -141,16 +141,17 @@
         .switch {
         position: relative; display: inline-block; width: 46px; height: 26px; vertical-align: middle;
         }
-        .switch input { display:none; }
+        .switch input { display: none; }
         .slider {
-        position:absolute; cursor:pointer; inset:0; background:#374151; border-radius:999px; transition:background .2s ease;
+        position: absolute; cursor: pointer; inset: 0; background: #374151; border-radius: 999px;
+        transition: background .2s ease;
         }
         .slider:before {
-        content:""; position:absolute; height:20px; width:20px; left:3px; top:3px; background:white; border-radius:50%;
-        transition: transform .2s ease;
+        content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px;
+        background: white; border-radius: 50%; transition: transform .2s ease;
         }
-        input:checked + .slider { background:#10b981; }
-        input:checked + .slider:before { transform: translateX(20px); }
+        .switch input:checked + .slider { background: #10b981; }
+        .switch input:checked + .slider:before { transform: translateX(20px); }
 
     </style>
 </head>
@@ -164,9 +165,14 @@
         </div>
 
         {% if messages %}
-        {% for m in messages %}<div class="msg">{{ m }}</div>{% endfor %}
+        <div style="margin:10px 0">
+            {% for m in messages %}
+            <div style="margin:6px 0; padding:8px 10px; border-radius:8px; background:#064e3b; color:#d1fae5;">
+                {{ m }}
+            </div>
+            {% endfor %}
+        </div>
         {% endif %}
-
         <div class="grid">
             <!-- Tạo Cuộc thi -->
             <div class="card">
@@ -196,19 +202,20 @@
                         <span class="code">{{ ct.ma }}</span>
                         &nbsp;{{ ct.tenCuocThi }}
                         &nbsp;<span class="status {{ ct.trangThai|yesno:'on,off' }}">
-                                <span class="dot"></span>
-                                {{ ct.trangThai|yesno:"Đang bật,Đang tắt" }}
-                                </span>
-                                <!-- Nút trượt bật/tắt ngay bên cạnh -->
-                                <form method="post" style="display:inline-block; margin-left:8px">
-                                {% csrf_token %}
-                                <input type="hidden" name="action" value="toggle_ct">
-                                <input type="hidden" name="cuocThi_id" value="{{ ct.id }}">
-                                <label class="switch" title="Bật/tắt cuộc thi">
-                                    <input type="checkbox" name="trangThai" {% if ct.trangThai %}checked{% endif %} onchange="this.form.submit()">
-                                    <span class="slider"></span>
-                                </label>
-                                </form>
+                        {{ ct.trangThai|yesno:"Đang bật,Đang tắt" }}
+                        </span>
+
+                        <!-- Nút trượt bật/tắt ngay bên cạnh -->
+                        <form method="post" style="display:inline-block; margin-left:8px">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="toggle_ct">
+                        <input type="hidden" name="cuocThi_id" value="{{ ct.id }}">
+                        <label class="switch" title="Bật/tắt cuộc thi">
+                            <input type="checkbox" name="trangThai" {% if ct.trangThai %}checked{% endif %} onchange="this.form.submit()">
+                            <span class="slider"></span>
+                        </label>
+                        </form>
+
 
                     </div>
 
@@ -254,20 +261,36 @@
                                 — Thang điểm (Max: {{ bt.cachChamDiem }})
                                 {% elif bt.phuongThucCham == "TIME" %}
                                 — Theo thời gian
-                                <button class="btn" type="button" data-open-time-modal data-btid="{{ bt.id }}"
-                                        data-rules='[{% for r in bt.time_rules.all %}{"start":{{ r.start_seconds }},"end":{{ r.end_seconds }},"score":{{ r.score }}}{% if not forloop.last %},{% endif %}{% endfor %}]'>
-                                Cấu hình thang thời gian
+                                <button class="btn" data-open-time-modal data-btid="{{ bt.id }}"
+                                    data-rules='[{% for r in bt.time_rules.all %}{"start":{{ r.start_seconds }},"end":{{ r.end_seconds }},"score":{{ r.score }}}{% if not forloop.last %},{% endif %}{% endfor %}]'>
+                                    Cấu hình thang thời gian
                                 </button>
-                                {% with rc=bt.time_rules.all|length %}
-                                <span class="badge {% if rc > 0 %}badge-ok{% else %}badge-muted{% endif %}" style="margin-left:8px;">
-                                    {% if rc > 0 %}*Đã cấu hình*{% else %}*Chưa cấu hình*{% endif %}
-                                </span>
-                                {% endwith %}
+
+                                {% if bt.time_rules.all|length %}
+                                <div class="muted" style="margin-top:4px;font-size:12px">
+                                    {% for r in bt.time_rules.all %}
+                                    {% if not forloop.first %}; {% endif %}{{ r.start_seconds }}s–{{ r.end_seconds }}s:
+                                    +{{ r.score }}đ
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
 
                                 {% else %}
                                 — Theo mẫu
+                                <button class="btn" type="button" data-open-tpl-modal data-btid="{{ bt.id }}">
+                                    Cấu hình mẫu chấm
+                                </button>
+
+                                {% if bt.template_sections.all|length %}
+                                <div class="muted" style="margin-top:4px;font-size:12px">
+                                    {{ bt.template_sections.all|length }} mục lớn —
+                                    {% for s in bt.template_sections.all %}
+                                    {{ s.items.all|length }}{% if not forloop.last %}+{% endif %}
+                                    {% endfor %} mục nhỏ (tổng từng phần).
+                                </div>
                                 {% endif %}
 
+                                {% endif %}
                             </div>
                         </div>
                         {% empty %}
@@ -314,8 +337,35 @@
             </form>
         </div>
     </div>
+    <!-- MODAL cấu hình mẫu chấm -->
+    <div id="tpl-modal"
+        style="display:none; position:fixed; inset:0; background:#0009; z-index:1000; align-items:center; justify-content:center;">
+        <div
+            style="background:#111827; border:1px solid #1f2937; border-radius:12px; padding:16px; width:560px; max-width:95vw">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                <div class="sec-title">Import mẫu chấm (Excel)</div>
+                <button id="tpl-close" class="btn" type="button">Đóng</button>
+            </div>
 
-    <script src="{% static 'core/organize.js' %}"></script>
+            <form id="tpl-form" method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="config_template_upload">
+                <input type="hidden" name="baiThi_id" id="tpl-btid">
+                <div class="row" style="gap:10px; align-items:center">
+                    <label>Tệp .xlsx</label>
+                    <input type="file" name="template_file" id="tpl-file" accept=".xlsx" required
+                        style="background:#0b1220;color:#e5e7eb;border:1px solid #243045;border-radius:8px;padding:8px 10px">
+                    <button class="btn" type="submit">Tải lên & Lưu</button>
+                </div>
+                <div class="muted" style="margin-top:8px;font-size:12px">
+                    Yêu cầu cột: <em>Section/Mục lớn</em>, <em>Item/Mục nhỏ</em>, <em>Điểm/Max</em> (có thể thêm Ghi
+                    chú).
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{% static 'core/organize.js' %}?v={% now 'U' %}"></script>
 </body>
 
 </html>
