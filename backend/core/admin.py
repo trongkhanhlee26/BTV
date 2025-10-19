@@ -6,7 +6,7 @@ from .models import (
 
 @admin.register(ThiSinh)
 class ThiSinhAdmin(admin.ModelAdmin):
-    list_display = ("maNV", "hoTen", "chiNhanh", "vung", "donVi", "nhom", "ma_ct", "ten_cuoc_thi")
+    list_display = ("id", "maNV", "hoTen", "chiNhanh", "vung", "donVi", "nhom", "ma_ct", "ten_cuoc_thi")
     list_select_related = ("cuocThi",)  # tăng tốc truy vấn
     list_filter = ("cuocThi",)          # lọc theo cuộc thi
     search_fields = ("maNV", "hoTen", "maCuocThi")

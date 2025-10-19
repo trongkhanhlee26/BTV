@@ -72,14 +72,13 @@ def ranking_view(request):
     )
     score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in scores_qs}
 
-    # 4) Chỉ lấy thí sinh thuộc đúng cuộc thi đã chọn
-    #    (điều kiện: có ít nhất một phiếu chấm trong cuộc thi này)
+    # 4) Chỉ lấy thí sinh có mact đúng với cuộc thi đã chọn
     ts_qs = (
         ThiSinh.objects
-        .filter(phieuchamdiem__cuocThi=selected_ct)  # lọc theo mact/ct đang xem
-        .distinct()
+        .filter(cuocThi=selected_ct)   # <-- dựa theo mact ở bảng ThiSinh
         .order_by("maNV")
     )
+
 
     rows = []
     for ts in ts_qs:

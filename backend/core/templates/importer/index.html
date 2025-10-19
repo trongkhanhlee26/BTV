@@ -95,11 +95,34 @@
 
 {% block body_extra %}
 <script>
-    const input = document.getElementById('file-input');
-    const nameBox = document.getElementById('file-name');
-    input.addEventListener('change', () => {
-        nameBox.textContent = input.files.length ? input.files[0].name : '';
-    });
+  const input   = document.getElementById('file-input');
+  const nameBox = document.getElementById('file-name');
+  const drop    = document.getElementById('dropzone');
+
+  function showName() {
+    nameBox.textContent = input.files && input.files.length ? input.files[0].name : '';
+  }
+
+  // Chọn file bằng dialog
+  input.addEventListener('change', showName);
+
+  // Kéo-thả trực tiếp vào khung
+  ['dragenter','dragover'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('ring-2','ring-sky-300'); })
+  );
+  ['dragleave','drop'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('ring-2','ring-sky-300'); })
+  );
+  drop.addEventListener('drop', e => {
+    // Nhận file và cập nhật input → kích hoạt hiển thị tên
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      showName();
+    }
+  });
+
+  // Nếu view có trả lại tên file qua message sau import thì phần messages bên trên đã hiển thị sẵn.
 </script>
+
 
 {% endblock %}

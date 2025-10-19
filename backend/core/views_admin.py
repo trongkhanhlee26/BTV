@@ -151,27 +151,39 @@ def import_view(request):
         with transaction.atomic():
             if target == "thisinh":
                 for r in rows:
-                    ma = r["maNV"]
+                    ma = (r["maNV"] or "").strip()
                     if not ma:
                         skipped += 1
                         continue
 
-                    obj, is_created = ThiSinh.objects.update_or_create(
-                        pk=ma,
-                        defaults=dict(
-                            hoTen=r["hoTen"],
-                            chiNhanh=r["chiNhanh"],
-                            vung=r["vung"],
-                            donVi=r["donVi"],
-                            email=r["email"],
-                            nhom=r["nhom"],
-                            cuocThi=cuocthi_obj,  # NEW: gán theo lựa chọn
-                        )
-                    )
+                    # Cập nhật chỉ khi trùng cả (maNV, cuộc thi); nếu khác 1 trong 2 → thêm mới
+                    # Lưu ý: yêu cầu form đã chọn maCT (cuocthi_obj)
+                    lookup = {
+                        "maNV": ma,
+                        "cuocThi": cuocthi_obj,               # so khớp theo cuộc thi đã chọn
+                    }
 
+                    # Nếu model bạn có field maCuocThi (string) để tra cứu nhanh, có thể bổ sung vào defaults:
+                    defaults = dict(
+                        hoTen=r["hoTen"],
+                        chiNhanh=r["chiNhanh"],
+                        vung=r["vung"],
+                        donVi=r["donVi"],
+                        email=r["email"],
+                        nhom=r["nhom"],
+                        cuocThi=cuocthi_obj,
+                    )
+                    if hasattr(ThiSinh, "maCuocThi") and cuocthi_obj:
+                        defaults["maCuocThi"] = cuocthi_obj.ma
+
+                    obj, is_created = ThiSinh.objects.update_or_create(
+                        **lookup,
+                        defaults=defaults
+                    )
 
                     created += int(is_created)
                     updated += int(not is_created)
+
             else:  # giamkhao
                 for r in rows:
                     ma = r["maNV"]

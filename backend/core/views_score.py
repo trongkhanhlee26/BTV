@@ -342,8 +342,9 @@ def score_view(request):
     ct = cuoc_this_active.filter(id=ct_param).first() if ct_param else cuoc_this_active.first()
 
     # (tuỳ chọn) nếu có ct và selected_ts không thuộc ct đó (dựa theo mact ở ThiSinh) → bỏ chọn
-    if ct and selected_ts and getattr(selected_ts, "cuocThi_id", None) != ct.id:
-        selected_ts = None
+    mismatch_ct = bool(
+        ct and selected_ts and getattr(selected_ts, "cuocThi_id", None) not in (None, ct.id)
+    )
 
 
 

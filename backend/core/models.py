@@ -15,18 +15,22 @@ def generate_code(model, prefix):
 
 
 class ThiSinh(models.Model):
-    maNV = models.CharField(max_length=20, primary_key=True)
+    id = models.BigAutoField(primary_key=True)                              # PK mới
+    maNV = models.CharField(max_length=20, db_index=True)  
     hoTen = models.CharField(max_length=100)
     chiNhanh = models.CharField(max_length=100)
     vung = models.CharField(max_length=100, blank=True, null=True)
     donVi = models.CharField(max_length=100, blank=True, null=True)
-    email = models.EmailField(unique=True)
+    email = models.EmailField(max_length=100)
     nhom = models.CharField(max_length=50)
 
     # NEW: gắn cuộc thi (nullable) + lưu sẵn mã CT để lọc nhanh
     cuocThi = models.ForeignKey('CuocThi', null=True, blank=True, on_delete=SET_NULL, related_name='thi_sinh')
     maCuocThi = models.CharField(max_length=10, blank=True, null=True, editable=False, db_index=True)
-
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['maNV', 'cuocThi'], name='uniq_thisinh_maNV_ct')
+        ]
     def save(self, *args, **kwargs):
         self.maCuocThi = self.cuocThi.ma if getattr(self, 'cuocThi', None) else None
         super().save(*args, **kwargs)
