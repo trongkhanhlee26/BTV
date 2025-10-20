@@ -6,7 +6,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db import transaction
 from django.db.models import Avg, Q
 from core.decorators import judge_required
-from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem
+from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi
 import json
 
 def _pick_competition(preferred_id: int | None):
@@ -341,10 +341,11 @@ def score_view(request):
     cuoc_this_active = CuocThi.objects.filter(trangThai=True).order_by("-id")
     ct = cuoc_this_active.filter(id=ct_param).first() if ct_param else cuoc_this_active.first()
 
-    # (tuỳ chọn) nếu có ct và selected_ts không thuộc ct đó (dựa theo mact ở ThiSinh) → bỏ chọn
-    mismatch_ct = bool(
-        ct and selected_ts and getattr(selected_ts, "cuocThi_id", None) not in (None, ct.id)
-    )
+   # ✅ Nếu thí sinh không thuộc cuộc thi đang chọn → bỏ chọn
+    if ct and selected_ts:
+
+        if not ThiSinhCuocThi.objects.filter(thiSinh=selected_ts, cuocThi=ct).exists():
+            selected_ts = None
 
 
 

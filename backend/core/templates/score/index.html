@@ -299,37 +299,6 @@
 
     </div>
   </div>
-  <script>
-(function () {
-  const box = document.querySelector('.card .suggest');
-  const input = document.querySelector('input[name="q"]');
-  const ctId = "{{ selected_ct_id }}";
-  if (!input) return;
-
-  let t = null;
-  input.addEventListener('input', () => {
-    const q = input.value.trim();
-    if (t) clearTimeout(t);
-    if (!q) { if (box) box.innerHTML = ''; return; }
-    t = setTimeout(async () => {
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set('q', q);
-        if (ctId) url.searchParams.set('ct', ctId);
-        url.searchParams.set('ajax', '1'); // đánh dấu yêu cầu AJAX
-        const res = await fetch(url.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!Array.isArray(data.suggestions)) return;
-        const html = data.suggestions.map(s => 
-          `<a href="/score/?ts=${encodeURIComponent(s.maNV)}&ct=${encodeURIComponent(ctId||'')}">${s.maNV} — ${s.hoTen}</a>`
-        ).join('');
-        if (box) box.innerHTML = html;
-      } catch (_) {}
-    }, 200); // debounce
-  });
-})();
-</script>
 
   <script src="{% static 'core/score.js' %}?v={% now 'U' %}"></script>
 

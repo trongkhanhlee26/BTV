@@ -15,28 +15,37 @@ def generate_code(model, prefix):
 
 
 class ThiSinh(models.Model):
-    id = models.BigAutoField(primary_key=True)                              # PK mới
-    maNV = models.CharField(max_length=20, db_index=True)  
+    maNV = models.CharField(max_length=20, primary_key=True)
     hoTen = models.CharField(max_length=100)
     chiNhanh = models.CharField(max_length=100)
     vung = models.CharField(max_length=100, blank=True, null=True)
     donVi = models.CharField(max_length=100, blank=True, null=True)
-    email = models.EmailField(max_length=100)
+    email = models.EmailField(unique=True)
     nhom = models.CharField(max_length=50)
-
-    # NEW: gắn cuộc thi (nullable) + lưu sẵn mã CT để lọc nhanh
-    cuocThi = models.ForeignKey('CuocThi', null=True, blank=True, on_delete=SET_NULL, related_name='thi_sinh')
-    maCuocThi = models.CharField(max_length=10, blank=True, null=True, editable=False, db_index=True)
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['maNV', 'cuocThi'], name='uniq_thisinh_maNV_ct')
-        ]
-    def save(self, *args, **kwargs):
-        self.maCuocThi = self.cuocThi.ma if getattr(self, 'cuocThi', None) else None
-        super().save(*args, **kwargs)
+    cuocThi = models.ManyToManyField(
+        'CuocThi',
+        through='ThiSinhCuocThi',
+        related_name='thiSinhs',
+        blank=True
+    )
 
     def __str__(self):
         return f"{self.maNV} - {self.hoTen}"
+class ThiSinhCuocThi(models.Model):
+    thiSinh = models.ForeignKey('ThiSinh', on_delete=models.CASCADE, related_name='tham_gia')
+    cuocThi = models.ForeignKey('CuocThi', on_delete=models.CASCADE, related_name='thi_sinh_tham_gia')
+
+    class Meta:
+        unique_together = ('thiSinh', 'cuocThi')
+
+    def __str__(self):
+        # đổi 'maNV' hoặc 'ma' tuỳ đúng tên trường trong model của bạn
+        try:
+            ts = getattr(self.thiSinh, 'maNV', self.thiSinh_id)
+            ct = getattr(self.cuocThi, 'ma', self.cuocThi_id)
+        except Exception:
+            ts, ct = self.thiSinh_id, self.cuocThi_id
+        return f"{ts} ↔ {ct}"
 
 
 class GiamKhao(models.Model):

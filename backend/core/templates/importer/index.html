@@ -18,7 +18,7 @@
                 {% csrf_token %}
                 <div>
                     <label class="block text-sm mb-1">Cuộc thi</label>
-                    <select name="maCT" required
+                    <select name="maCT" 
                         class="w-full rounded-xl bg-white/90 text-slate-800 border border-white/50 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300">
                         <option value="">-- chọn cuộc thi --</option>
                         {% for ct in cuocthi_list %}
@@ -95,34 +95,11 @@
 
 {% block body_extra %}
 <script>
-  const input   = document.getElementById('file-input');
-  const nameBox = document.getElementById('file-name');
-  const drop    = document.getElementById('dropzone');
-
-  function showName() {
-    nameBox.textContent = input.files && input.files.length ? input.files[0].name : '';
-  }
-
-  // Chọn file bằng dialog
-  input.addEventListener('change', showName);
-
-  // Kéo-thả trực tiếp vào khung
-  ['dragenter','dragover'].forEach(ev =>
-    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('ring-2','ring-sky-300'); })
-  );
-  ['dragleave','drop'].forEach(ev =>
-    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('ring-2','ring-sky-300'); })
-  );
-  drop.addEventListener('drop', e => {
-    // Nhận file và cập nhật input → kích hoạt hiển thị tên
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-      input.files = e.dataTransfer.files;
-      showName();
-    }
-  });
-
-  // Nếu view có trả lại tên file qua message sau import thì phần messages bên trên đã hiển thị sẵn.
+    const input = document.getElementById('file-input');
+    const nameBox = document.getElementById('file-name');
+    input.addEventListener('change', () => {
+        nameBox.textContent = input.files.length ? input.files[0].name : '';
+    });
 </script>
-
 
 {% endblock %}

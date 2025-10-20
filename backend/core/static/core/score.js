@@ -104,8 +104,9 @@ function tplOnChange(itemId, maxVal, raw) {
 }
 
 function saveTplScores() {
-    const thiSinh = (document.getElementById('tplThiSinh')?.value || '').trim();
-    if (!thiSinh) { alert('Nhập mã NV hoặc Họ tên'); return; }
+    const saveBtn = document.getElementById('saveBtn');
+    const thiSinh = (saveBtn?.dataset.ts || '').trim();
+    if (!thiSinh) { alert('Chưa chọn thí sinh ở màn hình chính.'); return; }
 
     fetch(`/score/template/${TPL_CTX.btid}/`, {
         method: 'POST',
@@ -134,6 +135,14 @@ function saveTplScores() {
 (function initScorePage() {
     const saveBtn = document.getElementById('saveBtn');
     if (!saveBtn) return;
+    // Delegate: mở modal TEMPLATE – luôn hoạt động
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.tpl-open-btn');
+        if (!btn) return;
+        const btid = parseInt(btn.dataset.btid, 10);
+        const bcode = btn.dataset.bcode || '';
+        openTemplateModal(btid, bcode);
+    });
 
     // Toggle TIME enable/disable input
     document.querySelectorAll('.done-toggle').forEach(cb => {
@@ -242,14 +251,5 @@ function saveTplScores() {
             console.error(e);
             showToast('Không thể kết nối server.', true);
         }
-    });
-
-    // Delegate: open TEMPLATE modal
-    document.addEventListener('click', function (e) {
-        const btn = e.target.closest('.tpl-open-btn');
-        if (!btn) return;
-        const btid = parseInt(btn.dataset.btid, 10);
-        const bcode = btn.dataset.bcode || '';
-        openTemplateModal(btid, bcode);
     });
 })();

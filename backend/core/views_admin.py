@@ -1,7 +1,7 @@
 # after
 import csv
-import unicodedata  # NEW
-import re          # NEW
+import unicodedata 
+import re          
 from io import TextIOWrapper
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
@@ -10,9 +10,8 @@ from django.db import transaction
 from django.core.files.uploadedfile import InMemoryUploadedFile, TemporaryUploadedFile
 from openpyxl import load_workbook
 from django.db.models import Prefetch
-from .models import BaiThi, BaiThiTemplateSection, BaiThiTemplateItem, VongThi  # SAU: thêm import các model template
-
-from .models import ThiSinh, GiamKhao, CuocThi
+from .models import BaiThi, BaiThiTemplateSection, BaiThiTemplateItem, VongThi
+from .models import ThiSinh, GiamKhao, CuocThi, ThiSinhCuocThi
 
 REQUIRED_COLUMNS = {
     "thisinh": ["maNV", "hoTen", "chiNhanh", "vung", "donVi", "email", "nhom"],
@@ -151,36 +150,31 @@ def import_view(request):
         with transaction.atomic():
             if target == "thisinh":
                 for r in rows:
-                    ma = (r["maNV"] or "").strip()
+                    ma = r.get("maNV", "").strip()
                     if not ma:
                         skipped += 1
                         continue
 
-                    # Cập nhật chỉ khi trùng cả (maNV, cuộc thi); nếu khác 1 trong 2 → thêm mới
-                    # Lưu ý: yêu cầu form đã chọn maCT (cuocthi_obj)
-                    lookup = {
-                        "maNV": ma,
-                        "cuocThi": cuocthi_obj,               # so khớp theo cuộc thi đã chọn
-                    }
-
-                    # Nếu model bạn có field maCuocThi (string) để tra cứu nhanh, có thể bổ sung vào defaults:
-                    defaults = dict(
-                        hoTen=r["hoTen"],
-                        chiNhanh=r["chiNhanh"],
-                        vung=r["vung"],
-                        donVi=r["donVi"],
-                        email=r["email"],
-                        nhom=r["nhom"],
-                        cuocThi=cuocthi_obj,
-                    )
-                    if hasattr(ThiSinh, "maCuocThi") and cuocthi_obj:
-                        defaults["maCuocThi"] = cuocthi_obj.ma
-
                     obj, is_created = ThiSinh.objects.update_or_create(
-                        **lookup,
-                        defaults=defaults
+                        pk=ma,
+                        defaults=dict(
+                            hoTen=r.get("hoTen", "").strip(),
+                            chiNhanh=r.get("chiNhanh", "").strip(),
+                            vung=r.get("vung", "").strip(),
+                            donVi=r.get("donVi", "").strip(),
+                            email=r.get("email", "").strip(),
+                            nhom=r.get("nhom", "").strip(),
+                        ),
                     )
 
+                    # ✅ Ghi vào bảng tham gia nếu có chọn cuộc thi
+                    if cuocthi_obj:
+                        try:
+                            ThiSinhCuocThi.objects.get_or_create(
+                                thiSinh=obj, cuocThi=cuocthi_obj
+                            )
+                        except Exception as e:
+                            messages.warning(request, f"Lỗi khi tạo quan hệ cho {ma}: {e}")
                     created += int(is_created)
                     updated += int(not is_created)
 

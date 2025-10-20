@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.db.models import Avg
 from .models import CuocThi, VongThi, BaiThi, ThiSinh, PhieuChamDiem
+from django.db.models import Q
 
 # Chuẩn hoá loại chấm để không phụ thuộc chữ hoa/thường/enum
 def _score_type(bt) -> str:
@@ -72,10 +73,16 @@ def ranking_view(request):
     )
     score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in scores_qs}
 
-    # 4) Chỉ lấy thí sinh có mact đúng với cuộc thi đã chọn
+    # 4) Chỉ lấy thí sinh thuộc đúng cuộc thi đã chọn
+    #    (điều kiện: có ít nhất một phiếu chấm trong cuộc thi này)
+
+    ts_m2m = ThiSinh.objects.filter(cuocThi=selected_ct)  # dùng M2M đúng mô hình hiện tại
+    ts_scored = ThiSinh.objects.filter(phieuchamdiem__cuocThi=selected_ct)
+
     ts_qs = (
         ThiSinh.objects
-        .filter(cuocThi=selected_ct)   # <-- dựa theo mact ở bảng ThiSinh
+        .filter(Q(pk__in=ts_m2m.values("pk")) | Q(pk__in=ts_scored.values("pk")))
+        .distinct()
         .order_by("maNV")
     )
 
