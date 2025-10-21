@@ -13,11 +13,19 @@
       font-family: system-ui, Segoe UI, Roboto
     }
 
-    .container {
-      max-width: 1000px;
-      margin: 24px auto;
-      padding: 0 16px
+    /* nới rộng vùng nội dung ra gần mép 2 bên */
+    .container{
+      max-width: 96vw;     /* trước là 1000px */
+      margin: 16px auto;
+      padding: 0 8px;      /* giảm padding hai bên */
     }
+
+    /* form filter: mặc định cho phép xuống dòng (mobile), desktop thì giữ 1 hàng */
+    .row--filters{ flex-wrap: wrap; }
+    @media (min-width: 1024px){
+      .row--filters{ flex-wrap: nowrap; }
+    }
+
 
     h1 {
       font-size: 22px;
@@ -141,13 +149,38 @@
     <h1>Chấm điểm (Cuộc thi)</h1>
 
     {% if competitions and competitions|length > 0 %}
-    <form method="get" class="row" style="margin-bottom:8px">
+    <form method="get" class="row row--filters" style="margin-bottom:8px">
+
       {% if selected_ts %}<input type="hidden" name="ts" value="{{ selected_ts.maNV }}">{% endif %}
-      <label>Cuộc thi:</label>
-      <select name="ct" onchange="this.form.submit()" class="input" style="min-width:320px">
-        {% for c in competitions %}
-          <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
-            {{ c.ma }} — {{ c.tenCuocThi }}
+
+    <!-- Cuộc thi -->
+    <label>Cuộc thi:</label>
+    <select name="ct" class="input" style="min-width:320px" onchange="this.form.submit()">
+      {% for c in competitions %}
+        <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
+          {{ c.ma }} — {{ c.tenCuocThi }}
+        </option>
+      {% endfor %}
+    </select>
+
+      <!-- Vòng thi (phụ thuộc CT) -->
+      <label>Vòng thi:</label>
+      <select name="vt" class="input" style="min-width:240px" {% if not rounds or rounds|length == 0 %}disabled{% endif %} onchange="this.form.submit()">
+        <option value="">— Tất cả vòng —</option>
+        {% for v in rounds %}
+          <option value="{{ v.id }}" {% if selected_vt_id and v.id == selected_vt_id %}selected{% endif %}>
+            {{ v.tenVongThi }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <!-- Bài thi (phụ thuộc Vòng) -->
+      <label>Bài thi:</label>
+      <select name="bt" class="input" style="min-width:260px" {% if not tests or tests|length == 0 %}disabled{% endif %} onchange="this.form.submit()">
+        <option value="">— Tất cả bài —</option>
+        {% for b in tests %}
+          <option value="{{ b.id }}" {% if selected_bt_id and b.id == selected_bt_id %}selected{% endif %}>
+            {{ b.ma }} — {{ b.tenBaiThi }}
           </option>
         {% endfor %}
       </select>

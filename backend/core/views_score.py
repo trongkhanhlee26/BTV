@@ -305,6 +305,9 @@ def score_view(request):
     query = (request.GET.get("q") or "").strip()
     selected_code = (request.GET.get("ts") or "").strip()
     ct_param = request.GET.get("ct")
+    vt_param = request.GET.get("vt")
+    bt_param = request.GET.get("bt")
+
 
     # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}, lọc theo cuộc thi nếu có (VÀ phải đang bật)
     if request.headers.get("x-requested-with") == "XMLHttpRequest" and request.GET.get("ajax") == "1" and query:
@@ -346,10 +349,39 @@ def score_view(request):
 
         if not ThiSinhCuocThi.objects.filter(thiSinh=selected_ts, cuocThi=ct).exists():
             selected_ts = None
+    # === NEW: cung cấp danh sách Vòng thi theo CT, và Bài thi theo Vòng ===
+    rounds = []
+    tests = []
+    selected_vt = None
+    selected_bt = None
 
+    if ct:
+        from .models import VongThi, BaiThi
+        rounds = list(VongThi.objects.filter(cuocThi=ct).order_by("id").values("id", "tenVongThi"))
+        if vt_param:
+            selected_vt = VongThi.objects.filter(cuocThi=ct, id=vt_param).first()
+            if selected_vt:
+                tests = list(BaiThi.objects.filter(vongThi=selected_vt).order_by("id").values("id", "ma", "tenBaiThi"))
+                if bt_param:
+                    selected_bt = BaiThi.objects.filter(vongThi=selected_vt, id=bt_param).first()
 
 
     structure, total_max = _load_form_data(selected_ts, ct, request)
+    # === NEW: lọc structure theo vòng/bài người dùng chọn
+    if selected_vt:
+        structure = [blk for blk in structure if getattr(blk.get("vong"), "id", None) == selected_vt.id]
+
+    if selected_bt:
+        new_structure = []
+        for blk in structure:
+            filtered = [b for b in blk.get("bai_list", []) if b.get("id") == selected_bt.id]
+            if filtered:
+                new_structure.append({"vong": blk.get("vong"), "bai_list": filtered})
+        structure = new_structure
+
+    # Tính lại tổng tối đa cho đúng phần đang hiển thị
+    total_max = sum(b.get("max", 0) for blk in structure for b in blk.get("bai_list", []))
+
 
 
     return render(request, "score/index.html", {
@@ -365,7 +397,13 @@ def score_view(request):
             CuocThi.objects.filter(trangThai=True).order_by("-id")
             .values("id","ma","tenCuocThi","trangThai")
         ),
+        # NEW: dữ liệu cho dropdown phụ thuộc
+        "rounds": rounds,
+        "tests": tests,
+        "selected_vt_id": selected_vt.id if selected_vt else None,
+        "selected_bt_id": selected_bt.id if selected_bt else None,
     })
+
 
     
 @judge_required
