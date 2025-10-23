@@ -169,6 +169,29 @@ def _parse_seconds(v):
     except Exception:
         return None
 
+def _resolve_thi_sinh_from_query(q: str):
+    if not q:
+        return None
+    raw = q.strip()
+    # Nếu người dùng chọn từ suggestion kiểu "TS001 — Nguyễn Văn A"
+    if "—" in raw:
+        maybe_code = raw.split("—", 1)[0].strip()
+        ts = ThiSinh.objects.filter(maNV__iexact=maybe_code).first()
+        if ts:
+            return ts
+    # Thử mã NV (tách token đầu)
+    token = raw.split()[0]
+    ts = ThiSinh.objects.filter(maNV__iexact=token).first()
+    if ts:
+        return ts
+    # Cuối cùng thử khớp tên (exact trước)
+    ts = ThiSinh.objects.filter(hoTen__iexact=raw).first()
+    if ts:
+        return ts
+    # Cho “tên chứa” để tăng độ linh hoạt (lấy người đầu)
+    return ThiSinh.objects.filter(hoTen__icontains=raw).order_by("maNV").first()
+
+
 
 @ensure_csrf_cookie
 @judge_required
@@ -310,13 +333,17 @@ def score_view(request):
 
 
     # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}, lọc theo cuộc thi nếu có (VÀ phải đang bật)
-    if request.headers.get("x-requested-with") == "XMLHttpRequest" and request.GET.get("ajax") == "1" and query:
+    if request.GET.get("ajax") in ("suggest", "1") and query:
         ct_for_suggest = CuocThi.objects.filter(trangThai=True, id=ct_param).first() if ct_param else None
         base_qs = ThiSinh.objects.all()
         if ct_for_suggest:
-            base_qs = base_qs.filter(cuocThi=ct_for_suggest)  # ← lọc theo mact ở ThiSinh
-        qs = base_qs.filter(hoTen__icontains=query).order_by("maNV").values("maNV", "hoTen")[:20]
-        return JsonResponse({"ok": True, "suggestions": list(qs)})
+            # Nếu ThiSinh có quan hệ trực tiếp tới CuocThi thì giữ dòng dưới;
+            # nếu bạn dùng bảng trung gian ThiSinhCuocThi, có thể thay bằng filter qua liên kết đó.
+            base_qs = base_qs.filter(cuocThi=ct_for_suggest)
+        qs = base_qs.filter(
+            Q(maNV__icontains=query) | Q(hoTen__icontains=query)
+        ).order_by("maNV").values("maNV", "hoTen")[:20]
+        return JsonResponse(list(qs), safe=False)
 
 
 
@@ -338,7 +365,12 @@ def score_view(request):
 
     selected_ts = None
     if selected_code:
-        selected_ts = ThiSinh.objects.filter(Q(maNV__iexact=selected_code) | Q(hoTen__iexact=selected_code)).first()
+        selected_ts = ThiSinh.objects.filter(
+            Q(maNV__iexact=selected_code) | Q(hoTen__iexact=selected_code)
+        ).first()
+    elif query:
+        # Người dùng bấm Tìm với ô textfield "q"
+        selected_ts = _resolve_thi_sinh_from_query(query)
 
     # Chỉ lấy danh sách CT đang bật...
     cuoc_this_active = CuocThi.objects.filter(trangThai=True).order_by("-id")
@@ -356,7 +388,6 @@ def score_view(request):
     selected_bt = None
 
     if ct:
-        from .models import VongThi, BaiThi
         rounds = list(VongThi.objects.filter(cuocThi=ct).order_by("id").values("id", "tenVongThi"))
         if vt_param:
             selected_vt = VongThi.objects.filter(cuocThi=ct, id=vt_param).first()

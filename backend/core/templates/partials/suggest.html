@@ -1,0 +1,12 @@
+{% if suggestions %}
+<div class="suggest" style="margin-top:6px; width:100%;">
+  {% for s in suggestions %}
+  <a href="/score/?ts={{ s.maNV }}&ct={{ selected_ct_id }}&vt={{ selected_vt_id }}&bt={{ selected_bt_id }}">
+    {{ s.maNV }} — {{ s.hoTen }}
+  </a>
+  {% endfor %}
+</div>
+{% elif query %}
+<div class="muted" style="margin-top:6px">Không tìm thấy thí sinh phù hợp.</div>
+{% endif %}
+    

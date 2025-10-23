@@ -15,6 +15,40 @@ function getCookie(name) {
     return null;
 }
 
+// === Debounce helper ===
+function debounce(fn, delay = 250) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// === Suggestion helpers ===
+function buildSuggestURL(q, ctVal) {
+  // Nếu bạn dùng endpoint khác, đổi ở đây (vd: `/score/suggest/?q=...&ct=...`)
+  const params = new URLSearchParams({
+    ajax: 'suggest',
+    q: q || '',
+    ct: ctVal || ''
+  });
+  return `/score/?${params.toString()}`;
+}
+
+function renderSuggestions(box, list) {
+  if (!box) return;
+  if (!Array.isArray(list) || list.length === 0) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = list
+    .map(it => `<a href="#" data-code="${it.maNV}" data-name="${it.hoTen}">${it.maNV} — ${it.hoTen}</a>`)
+    .join('');
+  box.style.display = 'block';
+}
+
+
 // === TIME helpers ===
 function parseSeconds(v) {
     if (!v) return null;
@@ -133,24 +167,70 @@ function saveTplScores() {
 
 // === Page init ===
 (function initScorePage() {
-    const saveBtn = document.getElementById('saveBtn');
-    if (!saveBtn) return;
-    // Delegate: mở modal TEMPLATE – luôn hoạt động
-    document.addEventListener('click', function (e) {
-        const btn = e.target.closest('.tpl-open-btn');
-        if (!btn) return;
-        const btid = parseInt(btn.dataset.btid, 10);
-        const bcode = btn.dataset.bcode || '';
-        openTemplateModal(btid, bcode);
+  const saveBtn = document.getElementById('saveBtn');
+
+  // --- SUGGEST: gợi ý theo ký tự gõ ---
+  const input = document.getElementById('searchInput');
+  const box = document.getElementById('suggestBox');
+  if (input && box) {
+    const getCT = () =>
+      (document.querySelector('select[name="ct"]')?.value) ||
+      (document.querySelector('input[name="ct"]')?.value) || '';
+
+    const onType = debounce(async () => {
+      const q = (input.value || '').trim();
+      if (q.length === 0) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+      try {
+        const res = await fetch(buildSuggestURL(q, getCT()), { credentials: 'same-origin' });
+        const data = await res.json(); // [{maNV, hoTen}, ...]
+        renderSuggestions(box, data);
+      } catch (e) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+      }
+    }, 250);
+
+    // Gõ để tìm
+    input.addEventListener('input', onType);
+
+    // Chọn 1 dòng suggestion -> điền vào input và ẩn box
+    box.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (!a) return;
+      e.preventDefault();
+      input.value = `${a.dataset.code} — ${a.dataset.name}`;
+      box.style.display = 'none';
     });
 
+    // Click ra ngoài -> ẩn box
+    document.addEventListener('click', (e) => {
+      if (e.target === input || box.contains(e.target)) return;
+      box.style.display = 'none';
+    });
+  }
+
+  // --- Delegate: mở modal TEMPLATE – luôn hoạt động ---
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.tpl-open-btn');
+    if (!btn) return;
+    const btid = parseInt(btn.dataset.btid, 10);
+    const bcode = btn.dataset.bcode || '';
+    openTemplateModal(btid, bcode);
+  });
+
+
     // Toggle TIME enable/disable input
-    document.querySelectorAll('.done-toggle').forEach(cb => {
-        const id = cb.dataset.btid;
-        const wrap = document.querySelector(`.time-wrap[data-btid="${id}"]`);
-        const input = wrap ? wrap.querySelector('.time-input') : null;
-        const pv = document.getElementById(`preview_${id}`);
-        const update = () => {
+    if (document.querySelector('.done-toggle')) {
+        document.querySelectorAll('.done-toggle').forEach(cb => {
+            const id = cb.dataset.btid;
+            const wrap = document.querySelector(`.time-wrap[data-btid="${id}"]`);
+            const input = wrap ? wrap.querySelector('.time-input') : null;
+            const pv = document.getElementById(`preview_${id}`);
+            const update = () => {
             if (!wrap || !input) return;
             if (cb.checked) {
                 wrap.classList.remove('hidden');
@@ -162,70 +242,76 @@ function saveTplScores() {
                 input.value = '';
                 if (pv) pv.textContent = '0';
             }
-        };
-        cb.addEventListener('change', update);
-        update();
-    });
+            };
+            cb.addEventListener('change', update);
+            update();
+        });
+    }
+
 
     // TIME preview by rules
-    document.querySelectorAll('.time-wrap').forEach(wrap => {
-        const rules = JSON.parse(wrap.dataset.rules || '[]');
-        const input = wrap.querySelector('.time-input');
-        const out = wrap.querySelector('.time-score');
-        if (!input || !out) return;
-        input.addEventListener('input', () => {
+    if (document.querySelector('.time-wrap')) {
+        document.querySelectorAll('.time-wrap').forEach(wrap => {
+            const rules = JSON.parse(wrap.dataset.rules || '[]');
+            const input = wrap.querySelector('.time-input');
+            const out = wrap.querySelector('.time-score');
+            if (!input || !out) return;
+            input.addEventListener('input', () => {
             const sec = parseSeconds(input.value);
             let score = 0;
             if (sec !== null) {
                 for (const r of rules) {
-                    if (sec >= r.s && sec <= r.e) { score = r.score; break; }
+                if (sec >= r.s && sec <= r.e) { score = r.score; break; }
                 }
             }
             out.textContent = score;
+            });
         });
-    });
+    }
+
 
     // Save (AJAX)
-    saveBtn.addEventListener('click', async function () {
-        const payload = {
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async function () {
+            const payload = {
             thiSinh: saveBtn.dataset.ts || '',
             ct_id: saveBtn.dataset.ct || null,
             scores: {}, done: {}, times: {}
-        };
+            };
 
-        // POINTS
-        document.querySelectorAll('input[name^="score_"]').forEach(i => {
+            // POINTS
+            document.querySelectorAll('input[name^="score_"]').forEach(i => {
             if (i.value !== '') payload.scores[i.name.replace('score_', '')] = i.value;
-        });
+            });
 
-        // TIME
-        let hasTimeError = false;
-        document.querySelectorAll('.done-toggle').forEach(cb => {
+            // TIME
+            let hasTimeError = false;
+            document.querySelectorAll('.done-toggle').forEach(cb => {
             const id = cb.dataset.btid;
             payload.done[id] = cb.checked;
             if (cb.checked) {
                 const t = document.querySelector(`input[name="time_${id}"]`);
                 if (!t || t.value.trim() === '') {
-                    hasTimeError = true;
-                    t && t.classList.add('border-red-500');
+                hasTimeError = true;
+                t && t.classList.add('border-red-500');
                 } else {
-                    t.classList.remove('border-red-500');
-                    payload.times[id] = t.value.trim();
+                t.classList.remove('border-red-500');
+                payload.times[id] = t.value.trim();
                 }
             }
-        });
-        if (hasTimeError) {
+            });
+            if (hasTimeError) {
             showToast('Vui lòng nhập thời gian cho bài đã tick Hoàn thành (mm:ss hoặc giây).', true);
             return;
-        }
+            }
 
-        try {
+            try {
             const res = await fetch(window.location.pathname + window.location.search, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': getCookie('csrftoken')
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCookie('csrftoken')
                 },
                 credentials: 'same-origin',
                 body: JSON.stringify(payload)
@@ -247,9 +333,11 @@ function saveTplScores() {
             });
 
             showToast(data.message || 'Đã lưu.');
-        } catch (e) {
+            } catch (e) {
             console.error(e);
             showToast('Không thể kết nối server.', true);
-        }
-    });
+            }
+        });
+    }
+
 })();
