@@ -17,7 +17,7 @@
       .container{
         max-width: 96vw;
         margin: 16px auto;
-        padding: 0 12px; /* tăng nhẹ padding để khi mobile không bị sát lề */
+        padding: 0 12px;
       }
       input,
       select,
@@ -192,71 +192,77 @@
 
     <form id="searchForm" method="get" class="card" style="display:flex; flex-direction:column; gap:12px;">
 
-    <!-- Ô nhập NV hoặc họ tên -->
-    <div class="row" style="flex-direction:column; align-items:flex-start; gap:8px; position: relative;">
-      <label>Nhập mã NV hoặc họ tên:</label>
-      <input type="hidden" name="ct" value="{{ selected_ct_id }}">
-      <div class="field">
-        <input id="searchInput" class="input" type="text" name="q" value="{{ query }}" placeholder="VD: TS001 hoặc Nguyễn Văn A">
+      {% if competitions and competitions|length > 0 %}
+      <div style="display:flex; flex-direction:column; gap:10px;">
+
+        <!-- Cuộc thi lên trước -->
+        <div class="field">
+          <label>Cuộc thi:</label>
+          <select id="ctSelect" name="ct" class="input">
+            {% for c in competitions %}
+              <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
+                {{ c.ma }} — {{ c.tenCuocThi }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Ô nhập NV hoặc họ tên đặt sau Cuộc thi -->
+      <div class="row" style="flex-direction:column; align-items:flex-start; gap:8px; position: relative;">
+        <label>Nhập mã NV hoặc họ tên:</label>
+        <div class="field">
+          <input id="searchInput" class="input" type="text" name="q" value="{{ query }}" placeholder="VD: TS001 hoặc Nguyễn Văn A">
+        </div>
+        <div id="suggestBox" class="suggest" style="margin-top:6px; width:100%; display:none">
+          {% if suggestions %}
+            {% for s in suggestions %}
+              <a href="/score/?ts={{ s.maNV }}&ct={{ selected_ct_id }}">{{ s.maNV }} — {{ s.hoTen }}</a>
+            {% endfor %}
+          {% endif %}
+        </div>
       </div>
 
-      <!-- suggestBox: dùng chung cho hiển thị gợi ý -->
-      <div id="suggestBox" class="suggest" style="margin-top:6px; width:100%; display:none">
-        {% if suggestions %}
-          {% for s in suggestions %}
-            <a href="/score/?ts={{ s.maNV }}&ct={{ selected_ct_id }}">{{ s.maNV }} — {{ s.hoTen }}</a>
-          {% endfor %}
-        {% endif %}
+      {% if competitions and competitions|length > 0 %}
+      <div style="display:flex; flex-direction:column; gap:10px;">
+
+        <!-- Vòng thi -->
+        <div class="field">
+          <label>Vòng thi:</label>
+          <select id="vtSelect" name="vt" class="input" {% if not rounds or rounds|length == 0 %}disabled{% endif %}>
+            <option value="">— Tất cả vòng —</option>
+            {% for v in rounds %}
+              <option value="{{ v.id }}" {% if selected_vt_id and v.id == selected_vt_id %}selected{% endif %}>
+                {{ v.tenVongThi }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Bài thi -->
+        <div class="field">
+          <label>Bài thi:</label>
+          <select id="btSelect" name="bt" class="input" {% if not tests or tests|length == 0 %}disabled{% endif %}>
+            <option value="">— Tất cả bài —</option>
+            {% for b in tests %}
+              <option value="{{ b.id }}" {% if selected_bt_id and b.id == selected_bt_id %}selected{% endif %}>
+                {{ b.ma }} — {{ b.tenBaiThi }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
       </div>
-    </div>
+      {% endif %}
 
-    {% if competitions and competitions|length > 0 %}
-    <div style="display:flex; flex-direction:column; gap:10px;">
 
-      <div class="field">
-        <label>Cuộc thi:</label>
-        <select id="ctSelect" name="ct" class="input">
-          {% for c in competitions %}
-            <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
-              {{ c.ma }} — {{ c.tenCuocThi }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="field">
-        <label>Vòng thi:</label>
-        <select id="vtSelect" name="vt" class="input" {% if not rounds or rounds|length == 0 %}disabled{% endif %}>
-          <option value="">— Tất cả vòng —</option>
-          {% for v in rounds %}
-            <option value="{{ v.id }}" {% if selected_vt_id and v.id == selected_vt_id %}selected{% endif %}>
-              {{ v.tenVongThi }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="field">
-        <label>Bài thi:</label>
-        <select id="btSelect" name="bt" class="input" {% if not tests or tests|length == 0 %}disabled{% endif %}>
-          <option value="">— Tất cả bài —</option>
-          {% for b in tests %}
-            <option value="{{ b.id }}" {% if selected_bt_id and b.id == selected_bt_id %}selected{% endif %}>
-              {{ b.ma }} — {{ b.tenBaiThi }}
-            </option>
-          {% endfor %}
-        </select>
+      <!-- Nút tìm -->
+      <div style="display:flex; justify-content:center;">
+        <button class="btn" type="submit">Tìm</button>
       </div>
 
-    </div>
-    {% endif %}
-
-    <!-- Nút tìm -->
-    <div style="display:flex; justify-content:center;">
-      <button class="btn" type="submit">Tìm</button>
-    </div>
-
-  </form>
+    </form>
 
 
 

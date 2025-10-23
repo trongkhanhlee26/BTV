@@ -413,6 +413,31 @@ def score_view(request):
     # Tính lại tổng tối đa cho đúng phần đang hiển thị
     total_max = sum(b.get("max", 0) for blk in structure for b in blk.get("bai_list", []))
 
+    # --- AJAX: meta cho dropdown động ---
+    if request.GET.get("ajax") == "meta":
+        ct_id = request.GET.get("ct")
+        vt_id = request.GET.get("vt")
+        data = {"rounds": [], "tests": []}
+
+        if ct_id:
+            ct_obj = CuocThi.objects.filter(trangThai=True, id=ct_id).first()
+            if ct_obj:
+                data["rounds"] = list(
+                    VongThi.objects.filter(cuocThi=ct_obj)
+                    .order_by("id")
+                    .values("id", "tenVongThi")
+                )
+                if vt_id:
+                    vt_obj = VongThi.objects.filter(cuocThi=ct_obj, id=vt_id).first()
+                    if vt_obj:
+                        data["tests"] = list(
+                            BaiThi.objects.filter(vongThi=vt_obj)
+                            .order_by("id")
+                            .values("id", "ma", "tenBaiThi")
+                        )
+        return JsonResponse(data)
+
+
 
 
     return render(request, "score/index.html", {

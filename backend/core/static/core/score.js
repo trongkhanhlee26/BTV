@@ -48,6 +48,18 @@ function renderSuggestions(box, list) {
   box.style.display = 'block';
 }
 
+async function fetchJSON(url) {
+  const r = await fetch(url, { credentials: 'same-origin' });
+  return r.json();
+}
+function fillSelect(sel, items, makeOption) {
+  sel.innerHTML = '';
+  sel.appendChild(new Option('— Tất cả —', ''));
+  items.forEach(it => sel.appendChild(makeOption(it)));
+  sel.disabled = items.length === 0;
+  if (!sel.disabled) sel.focus();
+}
+
 
 // === TIME helpers ===
 function parseSeconds(v) {
@@ -213,6 +225,34 @@ function saveTplScores() {
     });
   }
 
+    const ctSelect = document.getElementById('ctSelect');
+    const vtSelect = document.getElementById('vtSelect');
+    const btSelect = document.getElementById('btSelect');
+
+    if (ctSelect && vtSelect && btSelect) {
+        ctSelect.addEventListener('change', async () => {
+            const ct = ctSelect.value || '';
+            // nạp rounds
+            const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}`);
+            fillSelect(vtSelect, data.rounds || [], (v) => new Option(v.tenVongThi, v.id));
+            // sau khi đổi CT thì reset BT
+            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+        });
+
+        // khi đổi vòng thi → nạp bài thi
+        vtSelect.addEventListener('change', async () => {
+            const ct = ctSelect.value || '';
+            const vt = vtSelect.value || '';
+            if (!vt) {
+            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+            return;
+            }
+            const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}&vt=${encodeURIComponent(vt)}`);
+            fillSelect(btSelect, data.tests || [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+        });
+    }
+
+
   // --- Delegate: mở modal TEMPLATE – luôn hoạt động ---
   document.addEventListener('click', function (e) {
     const btn = e.target.closest('.tpl-open-btn');
@@ -341,3 +381,4 @@ function saveTplScores() {
     }
 
 })();
+
