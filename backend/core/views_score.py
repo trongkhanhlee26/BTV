@@ -248,6 +248,28 @@ def score_view(request):
         errors = []
         saved_scores = {}  # {bt_id: điểm_đã_lưu}
 
+        force = bool(payload.get("force"))
+        incoming_ids = set()
+
+        incoming_ids.update(int(k) for k in (scores or {}).keys() if str(k).isdigit())
+        incoming_ids.update(int(k) for k in (done or {}).keys()   if str(k).isdigit())
+        incoming_ids.update(int(k) for k in (times or {}).keys()  if str(k).isdigit())
+
+        if incoming_ids:
+            existed_qs = PhieuChamDiem.objects.filter(
+                thiSinh=thi_sinh, baiThi_id__in=list(incoming_ids)
+            ).values_list("baiThi__ma", flat=True)
+            existed_codes = list(existed_qs)
+
+            if existed_codes and not force:
+                return JsonResponse({
+                    "ok": False,
+                    "code": "already_scored",
+                    "message": "Thí sinh này đã được chấm điểm. Bạn có chắc chắn muốn chấm lại không?",
+                    "existed_tests": existed_codes,
+                }, status=409)
+
+
         with transaction.atomic():
             # 1) POINTS
             for s_id, raw in scores.items():
@@ -311,18 +333,25 @@ def score_view(request):
                 )
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
-
-        return JsonResponse({
-            "ok": True,
-            "message": f"Đã lưu: mới {created}, cập nhật {updated}, lỗi {len(errors)}.",
-            "errors": errors,
-            "saved_scores": saved_scores,
-            "debug": {
-                "count_all": len(bai_qs),
-                "count_points": sum(1 for b in bai_qs if _is_points(b)),
-                "count_time": sum(1 for b in bai_qs if _is_time(b)),
-            }
-        })
+        if errors:
+            return JsonResponse({
+                "ok": False,
+                "message": f"Điểm số không hợp lệ ở {len(errors)} mục.",
+                "errors": errors,
+                "saved_scores": saved_scores,
+            }, status=400)
+        else:
+            return JsonResponse({
+                "ok": True,
+                "message": f"Đã lưu điểm số thí sinh.",
+                "errors": errors,
+                "saved_scores": saved_scores,
+                "debug": {
+                    "count_all": len(bai_qs),
+                    "count_points": sum(1 for b in bai_qs if _is_points(b)),
+                    "count_time": sum(1 for b in bai_qs if _is_time(b)),
+                }
+            })
 
     # GET: render trang
     query = (request.GET.get("q") or "").strip()

@@ -320,9 +320,27 @@ function saveTplScores() {
             };
 
             // POINTS
+            let hasPointsError = false;
             document.querySelectorAll('input[name^="score_"]').forEach(i => {
-            if (i.value !== '') payload.scores[i.name.replace('score_', '')] = i.value;
+              const raw = i.value.trim();
+              if (raw === '') { i.classList.remove('invalid'); return; }
+
+              const val = parseInt(raw, 10);
+              const max = parseInt(i.getAttribute('max') || '0', 10);
+
+              if (Number.isNaN(val) || val < 0 || val > max) {
+                hasPointsError = true;
+                i.classList.add('invalid');
+              } else {
+                i.classList.remove('invalid');
+                payload.scores[i.name.replace('score_', '')] = val;
+              }
             });
+
+            if (hasPointsError) {
+              showToast('Có điểm không hợp lệ.', true);
+              return;
+            }
 
             // TIME
             let hasTimeError = false;
@@ -346,33 +364,52 @@ function saveTplScores() {
             }
 
             try {
-            const res = await fetch(window.location.pathname + window.location.search, {
+            async function postScores(body) {
+              const res = await fetch(window.location.pathname + window.location.search, {
                 method: 'POST',
                 headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': getCookie('csrftoken')
+                  'Content-Type': 'application/json',
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'X-CSRFToken': getCookie('csrftoken')
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            if (!res.ok || !data.ok) {
-                showToast(data.message || 'Có lỗi khi lưu.', true);
-                if (data.errors && data.errors.length) console.warn('Errors:', data.errors);
-                return;
+                body: JSON.stringify(body),
+              });
+              const data = await res.json();
+              return { res, data };
             }
 
-            // cập nhật preview/inputs theo điểm đã lưu
+            let { res, data } = await postScores(payload);
+
+            // Nếu server báo đã có điểm → hỏi xác nhận
+            if (res.status === 409 && data?.code === 'already_scored') {
+              const ok = confirm(data.message || 'Thí sinh này đã được chấm điểm. Bạn có chắc chắn muốn chấm lại không?');
+              if (!ok) {
+                showToast('Đã hủy chấm lại.', true);
+                return;
+              }
+              // gửi lại với cờ force=1
+              payload.force = 1;
+              ({ res, data } = await postScores(payload));
+            }
+
+            // xử lý lỗi khác
+            if (!res.ok || data?.ok === false) {
+              showToast(data?.message || 'Lưu điểm thất bại.', true);
+              return;
+            }
+
+            // cập nhật preview ngay khi lưu thành công
             const saved = data.saved_scores || {};
             Object.keys(saved).forEach(id => {
-                const pv = document.getElementById(`preview_${id}`);
-                if (pv) pv.textContent = saved[id];
-                const inp = document.querySelector(`input[name="score_${id}"]`);
-                if (inp) inp.value = saved[id];
+              const pv = document.getElementById(`preview_${id}`);
+              if (pv) pv.textContent = saved[id];
+              const inp = document.querySelector(`input[name="score_${id}"]`);
+              if (inp) inp.value = saved[id];
             });
 
             showToast(data.message || 'Đã lưu.');
+
             } catch (e) {
             console.error(e);
             showToast('Không thể kết nối server.', true);

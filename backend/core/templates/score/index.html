@@ -8,7 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
-      background: #0f172a;
+      background: url("{% static 'pics/bk3.jpg' %}") center/cover no-repeat fixed;
       color: #e5e7eb;
       font-family: system-ui, Segoe UI, Roboto
     }
@@ -16,73 +16,185 @@
     /* nới rộng vùng nội dung ra gần mép 2 bên */
       .container{
         max-width: 96vw;
-        margin: 16px auto;
+        margin: 36px auto;
         padding: 0 12px;
       }
-      input,
-      select,
-      button {
-        font-family: inherit;
-      }
-
-
-    /* form filter: mặc định cho phép xuống dòng (mobile), desktop thì giữ 1 hàng */
-    .row--filters{ flex-wrap: wrap; }
-    @media (min-width: 1024px){
-      .row--filters{ flex-wrap: nowrap; }
-    }
-
-
+      
     h1 {
       font-size: 22px;
-      margin: 0 0 12px
+      margin: 0 0 24px;
     }
 
+    :root {
+      --control-h: 50px; 
+      --font-base: 16px;    
+    }
+
+    @media (min-width: 1024px){
+      :root {
+        --control-h: 54px;
+        --font-base: 17px;
+      }
+    }
+
+    /* === Inputs trên nền kính === */
     .input {
-      background: #1e293b;
+      background: rgba(30, 41, 59, 0.28);
       color: #e5e7eb;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.489);
+      border-radius: 12px;
+      padding: 12px 14px;
       width: 100%;
       box-sizing: border-box;
+      font-size: var(--font-base);
+      height: var(--control-h);
+      line-height: calc(var(--control-h) - 2px);
+
+      -webkit-backdrop-filter: blur(8px) saturate(115%);
+      backdrop-filter: blur(8px) saturate(115%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
+
+    .input:focus {
+      outline: none;
+      border-color: rgba(250, 204, 21, 0.55);   
+      box-shadow:
+        0 0 0 3px rgba(245, 158, 11, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    /* Select trong wrap vẫn giữ kích thước như cũ */
+    .select-wrap > select {
+      border: none;        
+      color: inherit;
+    }
+
     .field { width: 100%; }
 
-    .btn {
-      background: #f59e0b;
-      color: #111827;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 14px;
-      font-weight: 600;
-      cursor: pointer;
-      width: 100%;          /* full width button */
-      max-width: 600px;     /* khớp max-width của .card */
-      margin: 12px auto 0;  /* căn giữa */
-      display: block;
-      text-align: center;
-      font-size: 16px;
-      transition: all 0.2s ease-in-out;
+    .select-wrap { 
+      position: relative; 
+      width: 100%;
+      overflow: hidden;      
     }
 
+    .select-wrap > select option { 
+      white-space: normal; 
+      color: #303131; 
+    }
+
+    @media (max-width: 768px){
+      .select-wrap > select {
+        max-width: 100vw;
+      }
+    }
+
+    /* === Glass Button === */
+    .btn {
+      position: relative;
+      background: linear-gradient(
+        180deg,
+        rgba(253, 76, 0, 0.893) 100%,
+        rgb(250, 244, 86) 0%/* vàng nhạt */
+        
+      );
+      color: #e0d7d7;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 14px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      max-width: 640px;
+      margin: 12px auto 0;
+      display: block;
+      text-align: center;
+      font-size: calc(var(--font-base) + 1px);
+      transition: transform 0.12s ease, box-shadow 0.2s ease;
+      height: var(--control-h);
+
+      -webkit-backdrop-filter: blur(8px) saturate(130%);
+      backdrop-filter: blur(8px) saturate(130%);
+      box-shadow:
+        0 12px 24px rgba(245, 158, 11, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+
+    .btn::after {
+      /* highlight gợn kính */
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(120% 80% at 30% -10%,
+        rgba(255,255,255,0.45), rgba(255,255,255,0.0) 45%);
+      pointer-events: none;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 16px 30px rgba(245, 158, 11, 0.30),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+
+    .btn:active { transform: translateY(0); }
+
+
+    /* === Glass Card (form + kết quả) === */
     .card {
-      background: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 12px;
-      padding: 14px;
+      position: relative;
+      /* lớp kính trong suốt */
+      background: rgba(17, 24, 39, 0.28);            /* #111827 ~ slate-900 nhưng trong suốt */
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 16px;
+      padding: 16px;
       margin-top: 12px;
       box-sizing: border-box;
       width: 100%;
-      max-width: 600px;     /* giới hạn chiều rộng desktop */
+      max-width: 720px;                               /* hơi rộng hơn để đẹp trên desktop */
       margin-left: auto;
       margin-right: auto;
+
+      /* kính mờ */
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      backdrop-filter: blur(14px) saturate(120%);
+
+      /* ánh sáng & chiều sâu */
+      box-shadow:
+        0 12px 30px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+      /* viền trong sáng hơn như cạnh kính */
+      outline: 1px solid rgba(255, 255, 255, 0.06);
     }
+
+    /* vệt highlight nhẹ phía trên như kính */
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(120% 60% at 10% -10%,
+                  rgba(255, 255, 255, 0.20),
+                  rgba(255, 255, 255, 0.06) 40%,
+                  transparent 60%);
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+    /* fallback nếu trình duyệt không hỗ trợ backdrop-filter */
+    @supports not ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
+      .card {
+        background: rgba(17, 24, 39, 0.75);
+      }
+    }
+
 
     .card label {
       display: block;
       margin-bottom: 4px;
       font-weight: 500;
+      font-size: 15px;
     }
 
 
@@ -110,35 +222,68 @@
       color: #94a3b8
     }
 
+    /* === Glass Suggest (dropdown gợi ý) === */
     .suggest {
-      background: #0b1220;
-      border: 1px solid #1f2937;
-      border-radius: 8px;
+      background: rgba(2, 6, 23, 0.35);               /* #020617 ~ slate-950 trong suốt */
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
       margin-top: 6px;
-      max-height: 220px;
-      overflow: auto
+      max-height: 260px;
+      overflow: auto;
+
+      -webkit-backdrop-filter: blur(12px) saturate(120%);
+      backdrop-filter: blur(12px) saturate(120%);
+
+      box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
     .suggest a {
       display: block;
       color: #e5e7eb;
       text-decoration: none;
-      padding: 8px 10px;
-      border-bottom: 1px solid #1f2937
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
     .suggest a:hover {
-      background: #1f2937
+      background: rgba(255, 255, 255, 0.05);
     }
 
+
+    /* score input nhỏ nhưng cùng chất liệu */
     .score-input {
-      width: 80px;
-      background: #1e293b;
+      width: 92px;
+      background: rgba(30, 41, 59, 0.28);
       color: #e5e7eb;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 6px
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 8px 10px;
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
     }
+
+    /* toast trên nền kính (giữ màu green/red nhưng trong suốt) */
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      background: rgba(22, 163, 74, 0.85);
+      color: #081016;
+      padding: 10px 14px;
+      border-radius: 12px;
+      display: none;
+      -webkit-backdrop-filter: blur(8px) saturate(120%);
+      backdrop-filter: blur(8px) saturate(120%);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+    .toast.error {
+      background: rgba(239, 68, 68, 0.92);
+      color: #fff;
+    }
+
 
     .row {
       display: flex;
@@ -147,49 +292,80 @@
       flex-wrap: wrap
     }
 
-    .toast {
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      background: #16a34a;
-      color: #081016;
-      padding: 10px 14px;
-      border-radius: 10px;
-      display: none
-    }
-
-    .toast.error {
-      background: #ef4444;
-      color: white
-    }
+    .invalid { border-color: #ef4444 !important; }
 
     /* === Responsive Fix cho mobile === */
     @media (max-width: 768px) {
       .container {
         max-width: 100vw;
-        padding: 0 16px; /* tạo khoảng cách đều 2 bên */
+        padding: 16px;
       }
       .card {
         width: 100%;
-        max-width: none; /* full chiều ngang trong khung container */
-        margin: 0 auto;
+        max-width: none;
+        margin: 12px auto 0;
+        border-radius: 14px;
       }
       .row {
         flex-direction: column;
         align-items: stretch;
       }
     }
+
+    /* ==== Confirm Modal (glass) ==== */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal {
+      width: min(520px, 92vw);
+      background: rgba(17, 24, 39, 0.30);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 16px;
+      padding: 16px;
+      color: #e5e7eb;
+
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      backdrop-filter: blur(14px) saturate(120%);
+      box-shadow:
+        0 12px 30px rgba(0,0,0,.45),
+        inset 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    .modal h4 {
+      margin: 0 0 8px; font-size: 18px;
+    }
+
+    .modal p {
+      margin: 0 0 14px; color: #cbd5e1;
+    }
+
+    .modal-actions {
+      display: flex; gap: 10px; justify-content: flex-end;
+    }
+
+    /* nút phụ cho cancel */
+    .btn-ghost {
+      background: rgba(255,255,255,0.06);
+      color: #e5e7eb;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 12px;
+      padding: 10px 14px;
+      height: var(--control-h);
+      cursor: pointer;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.10); }
   </style>
-
-  
-
 </head>
 
 <body>
   <div class="container">
     <!-- after -->
     <h1>Chấm điểm (Cuộc thi)</h1>
-
     <form id="searchForm" method="get" class="card" style="display:flex; flex-direction:column; gap:12px;">
 
       {% if competitions and competitions|length > 0 %}
@@ -198,13 +374,15 @@
         <!-- Cuộc thi lên trước -->
         <div class="field">
           <label>Cuộc thi:</label>
-          <select id="ctSelect" name="ct" class="input">
-            {% for c in competitions %}
-              <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
-                {{ c.ma }} — {{ c.tenCuocThi }}
-              </option>
-            {% endfor %}
-          </select>
+          <div class="select-wrap">
+            <select id="ctSelect" name="ct" class="input">
+              {% for c in competitions %}
+                <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
+                  {{ c.ma }} — {{ c.tenCuocThi }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
       </div>
       {% endif %}
@@ -230,27 +408,31 @@
         <!-- Vòng thi -->
         <div class="field">
           <label>Vòng thi:</label>
-          <select id="vtSelect" name="vt" class="input" {% if not rounds or rounds|length == 0 %}disabled{% endif %}>
-            <option value="">— Tất cả vòng —</option>
-            {% for v in rounds %}
-              <option value="{{ v.id }}" {% if selected_vt_id and v.id == selected_vt_id %}selected{% endif %}>
-                {{ v.tenVongThi }}
-              </option>
-            {% endfor %}
-          </select>
+          <div class="select-wrap">
+            <select id="vtSelect" name="vt" class="input" {% if not rounds or rounds|length == 0 %}disabled{% endif %}>
+              <option value="">— Tất cả —</option>
+              {% for v in rounds %}
+                <option value="{{ v.id }}" {% if selected_vt_id and v.id == selected_vt_id %}selected{% endif %}>
+                  {{ v.tenVongThi }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
 
         <!-- Bài thi -->
         <div class="field">
           <label>Bài thi:</label>
-          <select id="btSelect" name="bt" class="input" {% if not tests or tests|length == 0 %}disabled{% endif %}>
-            <option value="">— Tất cả bài —</option>
-            {% for b in tests %}
-              <option value="{{ b.id }}" {% if selected_bt_id and b.id == selected_bt_id %}selected{% endif %}>
-                {{ b.ma }} — {{ b.tenBaiThi }}
-              </option>
-            {% endfor %}
-          </select>
+          <div class="select-wrap">
+            <select id="btSelect" name="bt" class="input" {% if not tests or tests|length == 0 %}disabled{% endif %}>
+              <option value="">— Tất cả —</option>
+              {% for b in tests %}
+                <option value="{{ b.id }}" {% if selected_bt_id and b.id == selected_bt_id %}selected{% endif %}>
+                  {{ b.ma }} — {{ b.tenBaiThi }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
 
       </div>
