@@ -1,18 +1,11 @@
+{% extends "base.html" %}
 {% load static %}
+{% block title %}Chấm điểm{% endblock %}
 <!doctype html>
 <html lang="vi">
 
-<head>
-  <meta charset="utf-8">
-  <title>Chấm điểm</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+{% block head_extra %}
   <style>
-    body {
-      background: url("{% static 'pics/bk3.jpg' %}") center/cover no-repeat fixed;
-      color: #e5e7eb;
-      font-family: system-ui, Segoe UI, Roboto
-    }
-
     /* nới rộng vùng nội dung ra gần mép 2 bên */
       .container{
         max-width: 96vw;
@@ -57,9 +50,9 @@
 
     .input:focus {
       outline: none;
-      border-color: rgba(250, 204, 21, 0.55);   
+      border-color: rgba(179, 203, 245, 0.55);   
       box-shadow:
-        0 0 0 3px rgba(245, 158, 11, 0.18),
+        0 0 0 3px rgba(169, 211, 230, 0.18),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
 
@@ -91,13 +84,8 @@
     /* === Glass Button === */
     .btn {
       position: relative;
-      background: linear-gradient(
-        180deg,
-        rgba(253, 76, 0, 0.893) 100%,
-        rgb(250, 244, 86) 0%/* vàng nhạt */
-        
-      );
-      color: #e0d7d7;
+      background: #f4f1ecc6;
+      color: #223382;
       border: 1px solid rgba(255, 255, 255, 0.22);
       border-radius: 14px;
       padding: 10px 14px;
@@ -108,14 +96,14 @@
       margin: 12px auto 0;
       display: block;
       text-align: center;
-      font-size: calc(var(--font-base) + 1px);
+      font-size: calc(var(--font-base) + 4px);
       transition: transform 0.12s ease, box-shadow 0.2s ease;
       height: var(--control-h);
 
       -webkit-backdrop-filter: blur(8px) saturate(130%);
       backdrop-filter: blur(8px) saturate(130%);
       box-shadow:
-        0 12px 24px rgba(245, 158, 11, 0.25),
+        0 12px 24px rgba(173, 188, 244, 0.25),
         inset 0 1px 0 rgba(255, 255, 255, 0.25);
     }
 
@@ -133,7 +121,7 @@
     .btn:hover {
       transform: translateY(-1px);
       box-shadow:
-        0 16px 30px rgba(245, 158, 11, 0.30),
+        0 16px 30px rgba(212, 192, 249, 0.3),
         inset 0 1px 0 rgba(255, 255, 255, 0.3);
     }
 
@@ -270,7 +258,7 @@
       right: 16px;
       bottom: 16px;
       background: rgba(22, 163, 74, 0.85);
-      color: #081016;
+      color: #fff;
       padding: 10px 14px;
       border-radius: 12px;
       display: none;
@@ -310,8 +298,33 @@
         flex-direction: column;
         align-items: stretch;
       }
+      .modal-overlay {
+        padding: 16px;
+      }
+      .btn {
+        font-size: calc(var(--font-base) + 3px);
+      }
+      .toast {
+        left: 50%;
+        right: auto;                 /* bỏ canh phải */
+        top: calc(env(safe-area-inset-top, 0px) + 12px);
+        bottom: auto;                /* bỏ canh đáy */
+        transform: translateX(-50%);
+        width: auto;
+        max-width: min(520px, calc(100vw - 24px));
+        text-align: center;
+        z-index: 2000;               /* nằm trên các thẻ khác */
+        border-radius: 14px;
+        padding: 12px 16px;
+        /* hiệu ứng rơi xuống nhẹ */
+        animation: toastDrop 180ms ease-out;
+      }
     }
 
+    @keyframes toastDrop {
+      from { opacity: 0; transform: translate(-50%, -8px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
     /* ==== Confirm Modal (glass) ==== */
     .modal-overlay {
       position: fixed; inset: 0; z-index: 1000;
@@ -347,35 +360,20 @@
     .modal-actions {
       display: flex; gap: 10px; justify-content: flex-end;
     }
-
-    /* nút phụ cho cancel */
-    .btn-ghost {
-      background: rgba(255,255,255,0.06);
-      color: #e5e7eb;
-      border: 1px solid rgba(255,255,255,0.18);
-      border-radius: 12px;
-      padding: 10px 14px;
-      height: var(--control-h);
-      cursor: pointer;
-    }
-    .btn-ghost:hover { background: rgba(255,255,255,0.10); }
   </style>
-</head>
+{% endblock %}
 
-<body>
+{% block content %}
   <div class="container">
     <!-- after -->
-    <h1>Chấm điểm (Cuộc thi)</h1>
     <form id="searchForm" method="get" class="card" style="display:flex; flex-direction:column; gap:12px;">
 
       {% if competitions and competitions|length > 0 %}
-      <div style="display:flex; flex-direction:column; gap:10px;">
-
-        <!-- Cuộc thi lên trước -->
         <div class="field">
           <label>Cuộc thi:</label>
           <div class="select-wrap">
             <select id="ctSelect" name="ct" class="input">
+              <option value="">— Chọn cuộc thi —</option>
               {% for c in competitions %}
                 <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
                   {{ c.ma }} — {{ c.tenCuocThi }}
@@ -384,8 +382,10 @@
             </select>
           </div>
         </div>
-      </div>
+      {% else %}
+        <div class="card">Chưa có <b>Cuộc thi</b> nào được bật. Vào <a href="/organize/">/organize/</a> để tạo/bật.</div>
       {% endif %}
+
 
       <!-- Ô nhập NV hoặc họ tên đặt sau Cuộc thi -->
       <div class="row" style="flex-direction:column; align-items:flex-start; gap:8px; position: relative;">
@@ -445,16 +445,15 @@
       </div>
 
     </form>
+    <div id="searchHintCard" class="card" style="display:none">
+      <div id="searchHintText" class="muted"></div>
+    </div>
 
-
-
-    {% if not ct %}
-    <div class="card">Chưa có <b>Cuộc thi</b> nào được bật. Vào <a href="/organize/">/organize/</a> để tạo/bật.</div>
-    {% else %}
+    {% if ct %}
 
     <!-- Phiếu điểm -->
     {% if selected_ts %}
-    <div class="card">
+    <div id="scoreCard" class="card">
       <div class="row" style="justify-content:space-between">
         <div>
           <div><b>Thí sinh:</b> {{ selected_ts.maNV }} — {{ selected_ts.hoTen }}</div>
@@ -569,9 +568,17 @@
     </div>
   </div>
 
+  <!-- Confirm Modal -->
+  <div id="confirmModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="modal">
+      <h4 id="confirmTitle">Xác nhận</h4>
+      <p id="confirmMessage">Bạn có chắc chắn?</p>
+      <div class="modal-actions">
+        <button id="confirmCancel" class="btn" type="button">Hủy</button>
+        <button id="confirmOk" class="btn" type="button">Đồng ý</button>
+      </div>
+    </div>
+  </div>
+
   <script src="{% static 'core/score.js' %}?v={% now 'U' %}"></script>
-
-
-</body>
-
-</html>
+{% endblock %}

@@ -361,18 +361,27 @@ def score_view(request):
     bt_param = request.GET.get("bt")
 
 
-    # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}, lọc theo cuộc thi nếu có (VÀ phải đang bật)
-    if request.GET.get("ajax") in ("suggest", "1") and query:
-        ct_for_suggest = CuocThi.objects.filter(trangThai=True, id=ct_param).first() if ct_param else None
-        base_qs = ThiSinh.objects.all()
-        if ct_for_suggest:
-            # Nếu ThiSinh có quan hệ trực tiếp tới CuocThi thì giữ dòng dưới;
-            # nếu bạn dùng bảng trung gian ThiSinhCuocThi, có thể thay bằng filter qua liên kết đó.
-            base_qs = base_qs.filter(cuocThi=ct_for_suggest)
-        qs = base_qs.filter(
-            Q(maNV__icontains=query) | Q(hoTen__icontains=query)
-        ).order_by("maNV").values("maNV", "hoTen")[:20]
+    # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}; bắt buộc phải chọn Cuộc thi đang bật
+    if request.GET.get("ajax") in ("suggest", "1"):
+        query = (request.GET.get("q") or "").strip()
+        if not query:
+            return JsonResponse([], safe=False)
+
+        ct_id = request.GET.get("ct")
+        ct = CuocThi.objects.filter(trangThai=True, id=ct_id).first()
+        if not ct:
+            # Chưa chọn CT hoặc CT không hợp lệ/không bật -> không gợi ý
+            return JsonResponse([], safe=False)
+
+        qs = (
+            ThiSinh.objects
+            .filter(cuocThi=ct)
+            .filter(Q(maNV__icontains=query) | Q(hoTen__icontains=query))
+            .order_by("maNV")
+            .values("maNV", "hoTen")[:20]
+        )
         return JsonResponse(list(qs), safe=False)
+
 
 
 
@@ -403,7 +412,7 @@ def score_view(request):
 
     # Chỉ lấy danh sách CT đang bật...
     cuoc_this_active = CuocThi.objects.filter(trangThai=True).order_by("-id")
-    ct = cuoc_this_active.filter(id=ct_param).first() if ct_param else cuoc_this_active.first()
+    ct = cuoc_this_active.filter(id=ct_param).first() if ct_param else None
 
    # ✅ Nếu thí sinh không thuộc cuộc thi đang chọn → bỏ chọn
     if ct and selected_ts:
@@ -471,7 +480,7 @@ def score_view(request):
 
     return render(request, "score/index.html", {
         "ct": ct,
-        "selected_ct_id": ct.id if ct else None,
+        "selected_ct_id": int(ct_param) if ct_param else None,
         "structure": structure,
         "total_max": total_max,
         "query": query,

@@ -15,6 +15,49 @@ function getCookie(name) {
     return null;
 }
 
+// === Custom confirm (glass modal) ===
+function confirmDialog(message, title = 'Xác nhận') {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('confirmModal');
+    const msgEl   = document.getElementById('confirmMessage');
+    const titleEl = document.getElementById('confirmTitle');
+    const okBtn   = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+
+    if (!overlay || !msgEl || !okBtn || !cancelBtn) {
+      // fallback nếu thiếu markup
+      resolve(window.confirm(message));
+      return;
+    }
+
+    titleEl && (titleEl.textContent = title);
+    msgEl.textContent = message;
+    overlay.style.display = 'flex';
+
+    // đóng & trả kết quả
+    const cleanup = (val) => {
+      overlay.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onClickOutside);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onClickOutside = (e) => { if (e.target === overlay) cleanup(false); };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onClickOutside);
+    document.addEventListener('keydown', onKey);
+
+    // focus mặc định vào OK
+    setTimeout(() => okBtn.focus(), 0);
+  });
+}
+
 // === Debounce helper ===
 function debounce(fn, delay = 250) {
   let t;
@@ -191,13 +234,14 @@ function saveTplScores() {
 
     const onType = debounce(async () => {
       const q = (input.value || '').trim();
-      if (q.length === 0) {
+      const ct = getCT();
+      if (!ct || q.length === 0) {
         box.style.display = 'none';
         box.innerHTML = '';
         return;
       }
       try {
-        const res = await fetch(buildSuggestURL(q, getCT()), { credentials: 'same-origin' });
+        const res = await fetch(buildSuggestURL(q, ct), { credentials: 'same-origin' });
         const data = await res.json(); // [{maNV, hoTen}, ...]
         renderSuggestions(box, data);
       } catch (e) {
@@ -225,13 +269,91 @@ function saveTplScores() {
     });
   }
 
+  (function enhanceSearchGuard() {
+    const form = document.getElementById('searchForm');
+    const btn = form ? form.querySelector('button[type="submit"]') : null;
+    const input = document.getElementById('searchInput');
+    const ctSelect = document.getElementById('ctSelect');
+    const hintCard = document.getElementById('searchHintCard');
+    const hintText = document.getElementById('searchHintText');
+
+    if (!form || !btn || !input) return;
+
+    // helper hiển thị/ẩn thẻ thông báo
+    function showHint(text) {
+      if (!hintCard || !hintText) return;
+      hintText.innerHTML = text;
+      hintCard.style.display = 'block';
+      hintCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function hideHint() {
+      if (hintCard) hintCard.style.display = 'none';
+    }
+
+    // ban đầu luôn ẩn thông báo
+    hideHint();
+
+    // xử lý khi submit
+    form.addEventListener('submit', async (e) => {
+      const q = (input.value || '').trim();
+      const ct = ctSelect ? ctSelect.value : '';
+
+      if (!ct) {
+        e.preventDefault();
+        showHint('Vui lòng chọn <b>Cuộc thi</b> bên trên trước khi tìm thí sinh.');
+        ctSelect && ctSelect.focus();
+        return;
+      }
+
+      // nếu ô nhập rỗng => show thông báo & chặn form
+      if (!q) {
+        e.preventDefault();
+        showHint('Vui lòng nhập <b>Mã NV</b> hoặc <b>họ tên</b> để tìm thí sinh.');
+        input.focus();
+
+         const scoreCard = document.getElementById('scoreCard');
+         if (scoreCard) scoreCard.style.display = 'none';
+        return;
+      }
+
+      // nếu có nhập -> kiểm tra thí sinh thuộc cuộc thi hay không
+      try {
+        const url = `/score/?ajax=suggest&q=${encodeURIComponent(q)}&ct=${encodeURIComponent(ct)}`;
+        const res = await fetch(url, { credentials: 'same-origin' });
+        const list = await res.json();
+
+        if (Array.isArray(list) && list.length > 0) {
+          hideHint();
+          return;
+        }
+      } catch (err) {
+        e.preventDefault();
+        showHint('Không thể kiểm tra thí sinh lúc này. Vui lòng thử lại sau.');
+      }
+    });
+  })();
+
+
     const ctSelect = document.getElementById('ctSelect');
     const vtSelect = document.getElementById('vtSelect');
     const btSelect = document.getElementById('btSelect');
+    const hintCard = document.getElementById('searchHintCard');
+    const scoreCard = document.getElementById('scoreCard');
+    
 
     if (ctSelect && vtSelect && btSelect) {
         ctSelect.addEventListener('change', async () => {
             const ct = ctSelect.value || '';
+            hintCard.style.display = 'none';
+            scoreCard.style.display = 'none';
+            const input = document.getElementById('searchInput');
+            const box = document.getElementById('suggestBox');
+            if (input) input.value = '';
+            if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+            const resultCard = document.querySelector('.card[data-type="result"]');
+            if (resultCard) resultCard.style.display = 'none';
+
             // nạp rounds
             const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}`);
             fillSelect(vtSelect, data.rounds || [], (v) => new Option(v.tenVongThi, v.id));
@@ -383,7 +505,7 @@ function saveTplScores() {
 
             // Nếu server báo đã có điểm → hỏi xác nhận
             if (res.status === 409 && data?.code === 'already_scored') {
-              const ok = confirm(data.message || 'Thí sinh này đã được chấm điểm. Bạn có chắc chắn muốn chấm lại không?');
+              const ok = await confirmDialog(data.message || 'Thí sinh này đã được chấm điểm. Bạn có chắc chắn muốn chấm lại không?');
               if (!ok) {
                 showToast('Đã hủy chấm lại.', true);
                 return;
