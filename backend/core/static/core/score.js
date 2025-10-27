@@ -99,7 +99,7 @@ function fillSelect(sel, items, makeOption) {
   sel.innerHTML = '';
   sel.appendChild(new Option('— Tất cả —', ''));
   items.forEach(it => sel.appendChild(makeOption(it)));
-  sel.disabled = items.length === 0;
+  sel.disabled = !(items && items.length > 0);
   if (!sel.disabled) sel.focus();
 }
 
@@ -344,21 +344,50 @@ function saveTplScores() {
 
     if (ctSelect && vtSelect && btSelect) {
         ctSelect.addEventListener('change', async () => {
-            const ct = ctSelect.value || '';
-            hintCard.style.display = 'none';
-            scoreCard.style.display = 'none';
-            const input = document.getElementById('searchInput');
-            const box = document.getElementById('suggestBox');
-            if (input) input.value = '';
-            if (box) { box.style.display = 'none'; box.innerHTML = ''; }
-            const resultCard = document.querySelector('.card[data-type="result"]');
-            if (resultCard) resultCard.style.display = 'none';
+          const ct = (ctSelect.value || '').trim();
 
-            // nạp rounds
-            const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}`);
-            fillSelect(vtSelect, data.rounds || [], (v) => new Option(v.tenVongThi, v.id));
-            // sau khi đổi CT thì reset BT
+          // 1) Reset UI nhẹ
+          hintCard && (hintCard.style.display = 'none');
+          scoreCard && (scoreCard.style.display = 'none');
+          const input = document.getElementById('searchInput');
+          const box = document.getElementById('suggestBox');
+          const resultCard = document.querySelector('.card[data-type="result"]');
+          if (input) input.value = '';
+          if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+          if (resultCard) resultCard.style.display = 'none';
+
+          // 2) Nếu CHƯA chọn cuộc thi -> xóa & khóa dropdown con rồi dừng
+          if (!ct) {
+            fillSelect(vtSelect, [], (v) => new Option(v.tenVongThi, v.id));
             fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+            return;
+          }
+
+          // 3) Hiển thị trạng thái "đang tải" để người dùng thấy phản hồi ngay
+          vtSelect.innerHTML = '';
+          vtSelect.appendChild(new Option('Đang tải vòng thi...', ''));
+          vtSelect.disabled = true;
+
+          btSelect.innerHTML = '';
+          btSelect.appendChild(new Option('— Tất cả —', ''));
+          btSelect.disabled = true;
+
+          // 4) Nạp rounds từ server
+          try {
+            const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}`);
+            // fillSelect sẽ tự bật/tắt disabled dựa trên độ dài mảng
+            fillSelect(vtSelect, data.rounds || [], (v) => new Option(v.tenVongThi, v.id));
+            // Bài thi luôn reset rỗng khi mới chọn CT
+            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+
+            // Tùy UX: nếu có vòng thi thì focus vào vtSelect
+            if (!vtSelect.disabled) vtSelect.focus();
+          } catch (err) {
+            // Lỗi thì reset sạch và thông báo
+            fillSelect(vtSelect, [], (v) => new Option(v.tenVongThi, v.id));
+            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+            showToast('Không tải được vòng thi. Vui lòng thử lại.', true);
+          }
         });
 
         // khi đổi vòng thi → nạp bài thi
@@ -366,8 +395,8 @@ function saveTplScores() {
             const ct = ctSelect.value || '';
             const vt = vtSelect.value || '';
             if (!vt) {
-            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
-            return;
+              fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+              return;
             }
             const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}&vt=${encodeURIComponent(vt)}`);
             fillSelect(btSelect, data.tests || [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
@@ -375,14 +404,14 @@ function saveTplScores() {
     }
 
 
-  // --- Delegate: mở modal TEMPLATE – luôn hoạt động ---
-  document.addEventListener('click', function (e) {
-    const btn = e.target.closest('.tpl-open-btn');
-    if (!btn) return;
-    const btid = parseInt(btn.dataset.btid, 10);
-    const bcode = btn.dataset.bcode || '';
-    openTemplateModal(btid, bcode);
-  });
+    // --- Delegate: mở modal TEMPLATE – luôn hoạt động ---
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('.tpl-open-btn');
+      if (!btn) return;
+      const btid = parseInt(btn.dataset.btid, 10);
+      const bcode = btn.dataset.bcode || '';
+      openTemplateModal(btid, bcode);
+    });
 
 
     // Toggle TIME enable/disable input
