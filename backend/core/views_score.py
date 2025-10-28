@@ -4,9 +4,9 @@ from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db import transaction
-from django.db.models import Avg, Q
+from django.db.models import Avg, Q, Max
 from core.decorators import judge_required
-from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi
+from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi, BaiThiTemplateItem,BaiThiTemplateSection
 import json
 
 def _pick_competition(preferred_id: int | None):
@@ -81,6 +81,8 @@ def _load_form_data(selected_ts, ct, request):
         score_map.update(score_map_avg)
         score_map.update(score_map_gk)
 
+        time_map = {p.baiThi_id: getattr(p, "thoiGian", 0) for p in qs}
+
     for vt in vongs:
         bais = []
         
@@ -122,6 +124,7 @@ def _load_form_data(selected_ts, ct, request):
                 "type": b_type,
                 "rules": rules_json,
                 "current": score_map.get(bt.id, 0.0) if selected_ts else None,
+                "time_current": (time_map.get(bt.id) if selected_ts and _is_time(bt) else None),
             })
         bai_by_vong.append({"vong": vt, "bai_list": bais})
 
@@ -209,6 +212,8 @@ def score_view(request):
         scores  = payload.get("scores") or {}
         done    = payload.get("done")   or {}
         times   = payload.get("times")  or {}
+
+        
 
         thi_sinh = ThiSinh.objects.filter(Q(maNV__iexact=ts_code) | Q(hoTen__iexact=ts_code)).first()
         if not thi_sinh:
@@ -298,38 +303,49 @@ def score_view(request):
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
 
-            # 2) TIME
+            # 2) TIME (chuẩn hóa theo yêu cầu)
             for bt in bai_qs:
                 if not _is_time(bt):
                     continue
                 btid = bt.id
                 is_done = bool(done.get(str(btid)) or done.get(btid))
+
                 if not is_done:
-                    # Không hoàn thành → 0 điểm
-                    obj, was_created = PhieuChamDiem.objects.update_or_create(
-                        thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
-                        defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=0)
-                    )
-                    created += int(was_created); updated += int(not was_created)
+                    # ❗️BỎ TICK → XOÁ phiếu chấm để lần sau load lên coi như "chưa chấm"
+                    PhieuChamDiem.objects.filter(
+                        thiSinh=thi_sinh, giamKhao=judge, baiThi=bt
+                    ).delete()
                     saved_scores[btid] = 0
                     continue
 
-                seconds = _parse_seconds(times.get(str(btid)) or times.get(btid))
+                # ĐANG TICK → LƯU thời gian + điểm
+                # Cho phép "00:00" (seconds = 0) là hợp lệ
+                raw_t = times.get(str(btid)) or times.get(btid)
+                seconds = _parse_seconds(raw_t)
                 if seconds is None or seconds < 0:
                     errors.append(f"Bài {bt.ma}: thời gian không hợp lệ (mm:ss hoặc giây).")
-                    # Không lưu khi tick nhưng thời gian sai
                     continue
 
-                # map thời gian → điểm theo rule
+                # Tính điểm theo rule: nếu không match → mặc định Max
+                rule_max = bt.time_rules.aggregate(mx=Max("score")).get("mx") if hasattr(bt, "time_rules") else None
                 match = None
                 for r in bt.time_rules.all():
                     if r.start_seconds <= seconds <= r.end_seconds:
-                        match = r; break
-                diem = int(getattr(match, "score", 0))
+                        match = r
+                        break
+                if match:
+                    diem = int(match.score)
+                else:
+                    diem = int(rule_max) if rule_max is not None else int(bt.cachChamDiem)
 
                 obj, was_created = PhieuChamDiem.objects.update_or_create(
                     thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
-                    defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=diem)
+                    defaults=dict(
+                        cuocThi=ct,
+                        vongThi=bt.vongThi,
+                        diem=diem,
+                        thoiGian=seconds,   # ✅ lưu thời gian picker
+                    )
                 )
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
@@ -475,9 +491,6 @@ def score_view(request):
                         )
         return JsonResponse(data)
 
-
-
-
     return render(request, "score/index.html", {
         "ct": ct,
         "selected_ct_id": int(ct_param) if ct_param else None,
@@ -496,6 +509,8 @@ def score_view(request):
         "tests": tests,
         "selected_vt_id": selected_vt.id if selected_vt else None,
         "selected_bt_id": selected_bt.id if selected_bt else None,
+
+        "range60": range(60),
     })
 
 
@@ -521,7 +536,6 @@ def score_template_api(request, btid: int):
                 sec_qs = bt.template_sections.all().order_by("stt", "id")
             except Exception:
                 try:
-                    from .models import BaiThiTemplateSection
                     sec_qs = BaiThiTemplateSection.objects.filter(baiThi=bt).order_by("stt", "id")
                 except Exception:
                     return JsonResponse({"ok": False, "message": "Không tìm thấy quan hệ sections cho bài thi này."}, status=500)
@@ -532,7 +546,7 @@ def score_template_api(request, btid: int):
                     item_qs = s.items.all().order_by("stt", "id")
                 except Exception:
                     try:
-                        from .models import BaiThiTemplateItem
+
                         item_qs = BaiThiTemplateItem.objects.filter(section=s).order_by("stt", "id")
                     except Exception:
                         return JsonResponse({"ok": False, "message": f"Không tìm thấy items cho section {getattr(s,'id','?')}."}, status=500)
