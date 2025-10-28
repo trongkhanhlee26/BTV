@@ -1,10 +1,11 @@
+{% extends "base.html" %}
 {% load static %}
+{% block title %}Tạo cuộc thi{% endblock %}
 <!doctype html>
 <html lang="vi">
 
-<head>
+{% block head_extra %}
     <meta charset="utf-8">
-    <title>Tổ chức cuộc thi</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root {
@@ -180,13 +181,12 @@
             transform: translateX(20px);
         }
     </style>
-</head>
+{% endblock %}
 
-<body>
+{% block content %}
     <div class="container">
-        <h1>Tổ chức cuộc thi</h1>
         <div style="margin:6px 0">
-            <a href="/organize/competitions/" style="color:#93c5fd;text-decoration:none">→ Quản lý Cuộc thi
+            <a href="/organize/competitions/" style="color:#edf0f3;text-decoration:none">→ Quản lý Cuộc thi
                 (thêm/sửa/xoá)</a>
         </div>
 
@@ -393,6 +393,4 @@
     </div>
 
     <script src="{% static 'core/organize.js' %}?v={% now 'U' %}"></script>
-</body>
-
-</html>
+{% endblock %}

@@ -1,8 +1,10 @@
+{% extends "base.html" %}
 {% load static %}
+{% block title %}Tạo cuộc thi{% endblock %}
 <!doctype html>
 <html lang="vi">
 
-<head>
+{% block head_extra %}
   <meta charset="utf-8">
   <title>Quản lý Cuộc thi</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -120,13 +122,13 @@
       text-decoration: none
     }
   </style>
-</head>
+{% endblock %}
 
-<body>
+{% block content %}
   <div class="container">
     <h1>Quản lý Cuộc thi</h1>
     <div style="margin-bottom:8px">
-      <a class="link" href="/organize/">← Về trang Tổ chức</a>
+      <a class="link" href="/organize/" style="color:#edf0f3">← Về trang Tổ chức</a>
     </div>
 
     {% if messages %}
@@ -199,6 +201,4 @@
       {% endif %}
     </div>
   </div>
-</body>
-
-</html>
+{% endblock %}

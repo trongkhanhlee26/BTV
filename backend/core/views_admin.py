@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 from django.db.models import Prefetch
 from .models import BaiThi, BaiThiTemplateSection, BaiThiTemplateItem, VongThi
 from .models import ThiSinh, GiamKhao, CuocThi, ThiSinhCuocThi
+from core.decorators import judge_required
 
 REQUIRED_COLUMNS = {
     "thisinh": ["maNV", "hoTen", "chiNhanh", "vung", "donVi", "email", "nhom"],
@@ -117,7 +118,8 @@ def _read_csv(file, expected_cols):
             out[c] = (row.get(src, "") or "").strip()
         data.append(out)
     return data
-    
+
+@judge_required
 @staff_member_required
 def import_view(request):
     if request.method == "POST":
