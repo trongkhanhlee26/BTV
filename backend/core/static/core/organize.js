@@ -126,8 +126,245 @@ document.addEventListener('DOMContentLoaded', function () {
   tplForm?.addEventListener('submit', function () {
     console.log('[tpl] submit fired');
   });
+
   // Debug hooks
   window.__openTimeModal = openTimeModal;
   window.__openTpl = openTpl;
+
+  // ===== Toggle hiện/ẩn form "Thêm Cuộc thi" =====
+  const btnShowCreate = document.getElementById('btn-show-create');
+  const createCard = document.getElementById('create-card');
+  if (btnShowCreate && createCard) {
+    btnShowCreate.addEventListener('click', () => {
+      const open = createCard.style.display !== 'none';
+      createCard.style.display = open ? 'none' : 'block';
+      btnShowCreate.textContent = open ? '+ Tạo cuộc thi' : 'Ẩn form';
+    });
+  }
+
+// ===== Gợi ý + Tìm kiếm (autocomplete giống index) =====
+const searchBox = document.getElementById('search-ct');
+const suggList  = document.getElementById('ct-suggest');   // dropdown
+const table     = document.querySelector('table');
+
+// Chuẩn hoá bỏ dấu
+const vnNorm = s => (s || '')
+  .toString()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
+if (table && searchBox) {
+  const rows = Array.from(table.querySelectorAll('tbody tr'));
+  const takeName = (tr) => {
+    const inp = tr.querySelector('input[name="tenCuocThi"]');
+    if (inp && inp.value) return inp.value.trim();
+    return (tr.cells?.[1]?.innerText || '').trim();
+  };
+  const data = rows.map(tr => ({ tr, name: takeName(tr) }));
+
+  // Lọc bảng
+  function applyFilter(q) {
+    const k = vnNorm(q);
+    data.forEach(({ tr, name }) => {
+      tr.style.display = (!k || vnNorm(name).includes(k)) ? '' : 'none';
+    });
+  }
+
+  // ----- Dropdown gợi ý -----
+  let activeIdx = -1;
+  let itemEls = [];
+
+  function closeList() {
+    if (!suggList) return;
+    suggList.style.display = 'none';
+    suggList.innerHTML = '';
+    activeIdx = -1;
+    itemEls = [];
+  }
+  function openList() {
+    if (!suggList) return;
+    suggList.style.display = 'block';
+  }
+  function highlightFrag(text, q) {
+    const tN = vnNorm(text), qN = vnNorm(q);
+    const i = tN.indexOf(qN);
+    if (i < 0 || !q) return text;
+    return text.slice(0, i) + '<strong>' + text.slice(i, i + q.length) + '</strong>' + text.slice(i + q.length);
+  }
+  function renderList(q) {
+    if (!suggList) return;
+    const k = vnNorm(q);
+    const matches = !k ? [] : data.filter(x => vnNorm(x.name).includes(k)).slice(0, 8);
+    if (!matches.length) {
+      suggList.innerHTML = `<div class="sugg-empty">Không có gợi ý phù hợp</div>`;
+      openList(); activeIdx = -1; itemEls = []; return;
+    }
+    suggList.innerHTML = matches.map((m, i) => {
+      const statusEl = m.tr.querySelector('[data-status]');
+      const status = statusEl ? (statusEl.dataset.status || '') :
+                    (m.tr.textContent.includes('Đang bật') ? 'Bật' :
+                     m.tr.textContent.includes('Đang tắt') ? 'Tắt' : '');
+      return `
+        <div class="sugg-item" data-idx="${i}">
+          <span class="sugg-badge"></span>
+          <div class="sugg-name">${highlightFrag(m.name, q)}</div>
+          <div class="sugg-status">${status}</div>
+        </div>`;
+    }).join('');
+    itemEls = Array.from(suggList.querySelectorAll('.sugg-item'));
+    activeIdx = -1;
+    openList();
+    itemEls.forEach(el => {
+      el.addEventListener('click', () => {
+        const i = Number(el.dataset.idx);
+        const name = matches[i].name;
+        searchBox.value = name;
+        applyFilter(name);
+        closeList();
+        searchBox.focus();
+      });
+    });
+  }
+
+  // Gõ: mở gợi ý + lọc realtime
+  let t;
+  searchBox.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const v = searchBox.value;
+      if (!v.trim()) { closeList(); applyFilter(''); return; }
+      renderList(v);
+      applyFilter(v);
+    }, 60);
+  });
+
+  // Điều hướng: ↑/↓/Enter/Esc
+  searchBox.addEventListener('keydown', (e) => {
+    if (!suggList || suggList.style.display !== 'block') {
+      if (e.key === 'Enter') applyFilter(searchBox.value);
+      return;
+    }
+    if (!itemEls.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = (activeIdx + 1) % itemEls.length;
+      itemEls.forEach((el,i)=>el.classList.toggle('is-active', i===activeIdx));
+      itemEls[activeIdx].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = (activeIdx - 1 + itemEls.length) % itemEls.length;
+      itemEls.forEach((el,i)=>el.classList.toggle('is-active', i===activeIdx));
+      itemEls[activeIdx].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0) itemEls[activeIdx].click();
+      else { applyFilter(searchBox.value); closeList(); }
+    } else if (e.key === 'Escape') {
+      closeList();
+    }
+  });
+
+  // Click ngoài để đóng
+  document.addEventListener('click', (e) => {
+    if (suggList && !suggList.contains(e.target) && e.target !== searchBox) closeList();
+  });
+}
+  // ===== Popup "Cấu hình đã thêm" =====
+  const viewModal = document.getElementById('tpl-view-modal');
+  const viewContent = document.getElementById('tplv-content');
+  const viewClose = document.getElementById('tplv-close');
+
+  // Uỷ quyền click cho tất cả nút data-open-tpl-view
+  document.body.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-open-tpl-view]');
+    if (!btn) return;
+
+    const targetId = btn.getAttribute('data-target');
+    const src = document.getElementById(targetId);
+    if (!src) return;
+
+    // copy HTML vào modal
+    viewContent.innerHTML = src.innerHTML;
+// ===== Làm sạch nội dung bảng trong popup =====
+const rows = viewContent.querySelectorAll('tbody tr');
+
+function stripCodes(txt) {
+  // Bỏ tiền tố "BT123 - ", "VT02 - " ở bất kỳ vị trí nào
+  txt = txt.replace(/\b(?:BT|VT)\d+\s*-\s*/gi, '');
+  // Bỏ số trong ngoặc vuông: [1], [ 2 ], [10]
+  txt = txt.replace(/\[\s*\d+\s*\]\s*/g, '');
+  // Gộp dấu cách/thanh nối thừa
+  txt = txt.replace(/\s*[-–—]\s*/g, ' - ');
+  txt = txt.replace(/\s{2,}/g, ' ').trim();
+  // Bỏ " - " ở đầu/cuối nếu lỡ dư
+  txt = txt.replace(/^-\s+/, '').replace(/\s+-$/, '').trim();
+  return txt;
+}
+
+rows.forEach(tr => {
+  const tdSection = tr.cells?.[0];
+  const tdItem    = tr.cells?.[1];
+
+  if (!tdSection || !tdItem) return;
+
+  // Làm sạch chung
+  let s = stripCodes(tdSection.textContent || '');
+  let i = stripCodes(tdItem.textContent || '');
+
+  // Bỏ phần lặp "Mục lớn" trong "Mục nhỏ" nhưng KHÔNG để trống "Mục nhỏ"
+  const sLower = s.toLowerCase();
+  let iLower = i.toLowerCase();
+
+  if (sLower) {
+    // Các phân cách thường gặp sau phần lặp
+    const seps = [' - ', ' — ', ': ', ' – ', ' —', '-', ':'];
+    let trimmed = false;
+
+    for (const sep of seps) {
+      const prefix = sLower + sep.toLowerCase();
+      if (iLower.startsWith(prefix)) {
+        const rest = i.slice(prefix.length).trim();
+        if (rest) {            // chỉ cắt khi có phần dư
+          i = rest;
+          iLower = i.toLowerCase();
+          trimmed = true;
+        }
+        break;                  // gặp 1 sep là dừng
+      }
+    }
+
+    // Nếu chưa cắt bằng sep, xem trường hợp i bắt đầu đúng bằng s (không có sep)
+    if (!trimmed && iLower.startsWith(sLower) && iLower.length > sLower.length) {
+      const rest = i.slice(s.length).replace(/^[-–—:]\s*/, '').trim();
+      if (rest) i = rest;      // chỉ nhận nếu còn nội dung
+    }
+  }
+
+  // Nếu vì bất kỳ lý do gì i rỗng → giữ nguyên như s để "Mục nhỏ" không bị trống
+  if (!i) {
+    i = s;
+  }
+
+  // Gán lại text đã làm sạch
+  tdSection.textContent = s;
+  tdItem.textContent    = i;
+
+});
+    // mở modal (flex)
+    viewModal.style.display = 'flex';
+  });
+
+  // đóng modal
+  if (viewClose) {
+    viewClose.addEventListener('click', () => viewModal.style.display = 'none');
+  }
+  // click nền để đóng
+  viewModal.addEventListener('click', (e) => {
+    if (e.target === viewModal) viewModal.style.display = 'none';
+  });
+
   console.log('[organize] JS ready');
 });

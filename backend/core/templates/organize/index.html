@@ -1,16 +1,17 @@
+{% extends "base.html" %}
 {% load static %}
+{% block title %}Tạo cuộc thi{% endblock %}
 <!doctype html>
 <html lang="vi">
 
-<head>
+{% block head_extra %}
     <meta charset="utf-8">
-    <title>Tổ chức cuộc thi</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root {
             --bg: #0f172a;
             --card: #111827;
-            --muted: #94a3b8;
+  
             --txt: #e5e7eb;
             --brand: #f59e0b;
         }
@@ -38,12 +39,38 @@
             gap: 16px
         }
 
+        /* Liquid glass card */
         .card {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 16px;
-            border: 1px solid #1f2937
+        position: relative;
+        border-radius: 16px;
+        padding: 16px;
+        /* lớp kính trong suốt mờ */
+        background: linear-gradient( to bottom right, rgba(255,255,255,0.1), rgba(255,255,255,0.06) );
+        border: 1px solid rgba(255,255,255,0.14);
+        box-shadow:
+            0 10px 30px rgba(0,0,0,0.35),
+            inset 0 1px 0 rgba(255,255,255,0.08);
+
+        /* hiệu ứng blur kính */
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
         }
+
+        /* viền highlight mềm ở mép trên để “ướt” hơn */
+        .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background:
+            radial-gradient(120% 120% at -10% -20%, rgba(255,255,255,0.20), transparent 45%),
+            radial-gradient(110% 110% at 120% -10%, rgba(255,255,255,0.12), transparent 45%);
+        /* không che nội dung, chỉ tạo ánh sáng nhẹ */
+        mix-blend-mode: screen;
+        opacity: .7;
+        }
+
 
         .row {
             display: flex;
@@ -66,15 +93,48 @@
             color: var(--muted)
         }
 
-        .btn {
-            background: var(--brand);
-            border: none;
-            border-radius: 8px;
-            padding: 8px 12px;
-            color: #111827;
-            font-weight: 600;
-            cursor: pointer
-        }
+    .btn {
+      background: #f4f1ecc6;
+      color: #223382;
+      border: none;
+      border-radius: 14px;
+      padding: 7px 14px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      font-size: calc(var(--font-base) 4px);
+
+      -webkit-backdrop-filter: blur(8px) saturate(130%);
+      backdrop-filter: blur(8px) saturate(130%);
+      box-shadow:
+        0 12px 24px rgba(173, 188, 244, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+      .btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 10px;
+    opacity: .95;          /* nổi hơn trên nền glass */
+  }
+
+    .btn::after {
+      /* highlight gợn kính */
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(120% 80% at 30% -10%,
+        rgba(255,255,255,0.45), rgba(255,255,255,0.0) 45%);
+      pointer-events: none;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 16px 30px rgba(212, 192, 249, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+    .btn:active { transform: translateY(0); }
 
         .muted {
             color: var(--muted);
@@ -101,7 +161,6 @@
 
         .code {
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            background: #0b1220;
             border: 1px solid #1f2937;
             padding: 2px 6px;
             border-radius: 6px
@@ -180,14 +239,12 @@
             transform: translateX(20px);
         }
     </style>
-</head>
+{% endblock %}
 
-<body>
+{% block content %}
     <div class="container">
-        <h1>Tổ chức cuộc thi</h1>
-        <div style="margin:6px 0">
-            <a href="/organize/competitions/" style="color:#93c5fd;text-decoration:none">→ Quản lý Cuộc thi
-                (thêm/sửa/xoá)</a>
+        <div style="margin:6px 0; margin-top: 50px;">
+            <a href="/organize/competitions/" style="color:#edf0f3;text-decoration:none">← Trang Danh sách cuộc thi</a>
         </div>
 
         {% if messages %}
@@ -200,21 +257,6 @@
         </div>
         {% endif %}
         <div class="grid">
-            <!-- Tạo Cuộc thi -->
-            <div class="card">
-                <div class="sec-title">Tạo cuộc thi</div>
-                <form method="post" class="row" style="align-items:center;gap:12px">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="create_ct">
-                    <label>Tên cuộc thi</label>
-                    <input type="text" name="tenCuocThi" placeholder="VD: Cuộc thi tay nghề 2025" required>
-                    <label>Trạng thái</label>
-                    <label style="display:flex;align-items:center;gap:6px">
-                        <input type="checkbox" name="trangThai"> Bật
-                    </label>
-                    <button class="btn" type="submit">Tạo</button>
-                </form>
-            </div>
 
             <!-- Danh sách Cuộc thi -->
             <div class="card">
@@ -302,22 +344,72 @@
                                 </div>
                                 {% endif %}
 
-                                {% else %}
-                                — Theo mẫu
-                                <button class="btn" type="button" data-open-tpl-modal data-btid="{{ bt.id }}">
-                                    Cấu hình mẫu chấm
-                                </button>
+                               {% else %}
+                                 — Theo mẫu
+                                 <button class="btn" type="button" data-open-tpl-modal data-btid="{{ bt.id }}">
+                                   Cấu hình mẫu chấm
+                                 </button>
++
+                                 {# Nếu đã có file/sections thì hiển thị nút xem cấu hình #}
+                                 {% if bt.template_sections.all|length %}
+                                   <button class="btn btn-sm" type="button"
+                                           data-open-tpl-view
+                                           data-target="tplview-{{ bt.id }}">
+                                     Cấu hình đã thêm
+                                   </button>
++
+                                   {# Nội dung bảng chi tiết render sẵn (ẩn), khi bấm sẽ copy vào popup #}
+                                   <div id="tplview-{{ bt.id }}" style="display:none">
+                                     <div style="margin-bottom:8px">
+                                       <span class="code">{{ vt.ma }}</span> {{ vt.tenVongThi }}
+                                       &nbsp;•&nbsp;
+                                       <span class="code">{{ bt.ma }}</span> {{ bt.tenBaiThi }}
+                                     </div>
++
+                                     <table class="table" style="width:100%; border-collapse:collapse">
+                                       <thead>
+                                         <tr>
+                                           <th style="text-align:left; border-bottom:1px solid #334155; padding:6px 8px">Mục lớn</th>
+                                           <th style="text-align:left; border-bottom:1px solid #334155; padding:6px 8px">Mục nhỏ</th>
+                                           <th style="text-align:right; border-bottom:1px solid #334155; padding:6px 8px">Điểm/Max</th>
+                                           <th style="text-align:left; border-bottom:1px solid #334155; padding:6px 8px">Ghi chú</th>
+                                         </tr>
+                                       </thead>
+                                        <tbody>
+                                        {% for s in bt.template_sections.all %}
+                                            {% for i in s.items.all %}
+                                            <tr>
+                                                <td style="padding:6px 8px">
+                                                  {{ s.title }}
+                                                </td>
 
-                                {% if bt.template_sections.all|length %}
-                                <div class="muted" style="margin-top:4px;font-size:12px">
-                                    {{ bt.template_sections.all|length }} mục lớn —
-                                    {% for s in bt.template_sections.all %}
-                                    {{ s.items.all|length }}{% if not forloop.last %}+{% endif %}
-                                    {% endfor %} mục nhỏ (tổng từng phần).
-                                </div>
-                                {% endif %}
+                                                <td style="padding:6px 8px">
+                                                {{ i.content }}
+                                                </td>
 
-                                {% endif %}
+                                                <td style="padding:6px 8px; text-align:right">
+                                                {% if i.max_score or i.max_score == 0 %}
+                                                    {{ i.max_score }}
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                                </td>
+
+                                                <td style="padding:6px 8px">
+                                                {% if i.ghiChu %}{{ i.ghiChu }}{% elif i.note %}{{ i.note }}{% else %}{% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% empty %}
+                                            <tr><td colspan="4" class="muted" style="padding:6px 8px">Chưa có mục nhỏ.</td></tr>
+                                        {% endfor %}
+                                        </tbody>
+
+                                     </table>
+                                   </div>
+                                 {% endif %}
+                               {% endif %}
+
                             </div>
                         </div>
                         {% empty %}
@@ -355,7 +447,7 @@
                 <input type="hidden" name="baiThi_id" id="tm-btid">
                 <input type="hidden" name="time_rules_json" id="tm-json">
                 <div class="row" style="margin-bottom:8px">
-                    <button class="btn" type="button" id="tm-add">+ Thêm dòng</button>
+                    <button class="btn" type="button" id="tm-add">Thêm dòng</button>
                 </div>
                 <div id="tm-rows" class="grid" style="gap:8px"></div>
                 <div class="row" style="margin-top:12px; justify-content:flex-end">
@@ -391,8 +483,17 @@
             </form>
         </div>
     </div>
+<!-- MODAL xem cấu hình đã thêm -->
+<div id="tpl-view-modal"
+     style="display:none; position:fixed; inset:0; background:#0009; z-index:1000; align-items:center; justify-content:center;">
+  <div class="card" style="width:120px; max-width:96vw; padding:16px">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+      <div class="sec-title">Cấu hình đã thêm</div>
+      <button id="tplv-close" class="btn btn-sm" type="button">Đóng</button>
+    </div>
+    <div id="tplv-content"></div>
+  </div>
+</div>
 
     <script src="{% static 'core/organize.js' %}?v={% now 'U' %}"></script>
-</body>
-
-</html>
+{% endblock %}
