@@ -53,8 +53,8 @@
                     <div class="hidden md:flex items-center gap-1">
                         <a href="/score" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
                         {% if p|slice:':7' == '/score/' or p == '/score' %} bg-white/10 {% endif %}">Chấm điểm</a>
-                        <a href="/organize" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
-                        {% if p|slice:':9' == '/organize' %} bg-white/10 {% endif %}">Tạo cuộc thi</a>
+                        <a href="/organize/competitions/" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
+                        {% if p|slice:':9' == '/organize/competitions/' %} bg-white/10 {% endif %}">Tạo cuộc thi</a>
                         <a href="/ranking" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
                         {% if p|slice:':9' == '/ranking' %} bg-white/10 {% endif %}">Xếp hạng</a>
                         <a href="/manage" class="px-3 py-2 rounded-xl hover:bg-white/10 transition
@@ -81,7 +81,7 @@
                         <div id="navDropdown"
                             class="hidden absolute right-0 mt-2 z-[60] min-w-[9.5rem] rounded-xl shadow-xl overflow-hidden bg-slate-900/85 ring-1 ring-white/15">
                             <a href="/score" class="block px-4 py-2 hover:bg-white/10">Chấm điểm</a>
-                            <a href="/organize" class="block px-4 py-2 hover:bg-white/10">Tạo cuộc thi</a>
+                            <a href="/organize/competitions/" class="block px-4 py-2 hover:bg-white/10">Tạo cuộc thi</a>
                             <a href="/ranking" class="block px-4 py-2 hover:bg-white/10">Xếp hạng</a>
                             <a href="/manage" class="block px-4 py-2 hover:bg-white/10">Quản lý</a>
                             <div class="h-px bg-white/20 my-1"></div>

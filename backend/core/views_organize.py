@@ -7,10 +7,23 @@ from .models import CuocThi, VongThi, BaiThi, BaiThiTimeRule, BaiThiTemplateSect
 
 
 @require_http_methods(["GET", "POST"])
-def organize_view(request):
+def organize_view(request, ct_id=None):
     if request.method == "POST":
         action = request.POST.get("action")
         try:
+            if action == "toggle_ct":
+                ct_pk = request.POST.get("cuocThi_id")
+                if not ct_pk:
+                    messages.error(request, "Thiếu mã cuộc thi.")
+                    return redirect(request.path)
+                ct = CuocThi.objects.get(id=ct_pk)
+                # checkbox name=trangThai chỉ có khi CHECKED => 'on' => True, ngược lại là False
+                new_state = (request.POST.get("trangThai") == "on")
+                ct.trangThai = new_state
+                ct.save(update_fields=["trangThai"])
+                messages.success(request, f"{ct.ma}: đã {'bật' if new_state else 'tắt'}.")
+                return redirect(request.path)
+
             if action == "create_ct":
                 ten = (request.POST.get("tenCuocThi") or "").strip()
                 trang_thai = request.POST.get("trangThai") == "on"
@@ -59,8 +72,6 @@ def organize_view(request):
             if action == "config_time_rules":
                 import json
                 btid = request.POST.get("baiThi_id")
-                
-
                 raw = request.POST.get("time_rules_json") or "[]"
                 try:
                     bt = BaiThi.objects.get(id=btid)
@@ -97,12 +108,6 @@ def organize_view(request):
                 messages.success(request, f"Đã lưu {len(cleaned)} dòng thang thời gian cho {bt.ma}.")
                 return redirect(request.path)
 
-                        # NEW: cấu hình thang thời gian
-            if action == "config_time_rules":
-                import json
-                btid = request.POST.get("baiThi_id")
-                messages.success(request, f"Đã lưu {len(cleaned)} dòng thang thời gian cho {bt.ma}.")
-                return redirect(request.path)
 
             # NEW: cấu hình mẫu chấm (import Excel) — chạy tại /organize/
             if action == "config_template_upload":
@@ -275,22 +280,19 @@ def organize_view(request):
             messages.error(request, "Giá trị điểm tối đa không hợp lệ.")
             return redirect(request.path)
 
-    # GET: hiển thị danh sách CT → VT → BT
-    cuoc_this = (
-        CuocThi.objects
-        .prefetch_related(
-            Prefetch(
-                "vong_thi",
-                queryset=VongThi.objects.prefetch_related(
-                    "bai_thi__time_rules",
-                    "bai_thi__template_sections__items",  # NEW
-                )
+    # GET: hiển thị danh sách CT → VT → BT (toàn bộ hoặc chỉ 1 CT nếu có ct_id)
+    base_qs = CuocThi.objects.prefetch_related(
+        Prefetch(
+            "vong_thi",
+            queryset=VongThi.objects.prefetch_related(
+                "bai_thi__time_rules",
+                "bai_thi__template_sections__items",
             )
         )
-        .order_by("-id")
-    )
-
-    return render(request, "organize/index.html", {"cuoc_this": cuoc_this})
+    ).order_by("-id")
+    if ct_id:
+        base_qs = base_qs.filter(id=ct_id)
+    return render(request, "organize/index.html", {"cuoc_this": base_qs})
 
 
 @require_http_methods(["GET", "POST"])
