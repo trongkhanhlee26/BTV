@@ -272,14 +272,13 @@ if (table && searchBox) {
     if (suggList && !suggList.contains(e.target) && e.target !== searchBox) closeList();
   });
 }
-  // ===== Popup "Cấu hình đã thêm" =====
-  const viewModal = document.getElementById('tpl-view-modal');
-  const viewContent = document.getElementById('tplv-content');
-  const viewClose = document.getElementById('tplv-close');
+const viewModal   = document.getElementById('tpl-view-modal');
+const viewContent = document.getElementById('tplv-content');
+const viewClose   = document.getElementById('tplv-close');
 
-  // Uỷ quyền click cho tất cả nút data-open-tpl-view
+if (viewModal && viewContent) {
   document.body.addEventListener('click', function (e) {
-    const btn = e.target.closest('[data-open-tpl-view]');
+    const btn = e.target.closest?.('[data-open-tpl-view]');
     if (!btn) return;
 
     const targetId = btn.getAttribute('data-target');
@@ -353,18 +352,78 @@ rows.forEach(tr => {
   tdItem.textContent    = i;
 
 });
-    // mở modal (flex)
+
+
+    // mở modal
     viewModal.style.display = 'flex';
   });
 
-  // đóng modal
-  if (viewClose) {
-    viewClose.addEventListener('click', () => viewModal.style.display = 'none');
-  }
-  // click nền để đóng
+  viewClose?.addEventListener('click', () => viewModal.style.display = 'none');
   viewModal.addEventListener('click', (e) => {
     if (e.target === viewModal) viewModal.style.display = 'none';
   });
+} else {
+  console.warn('[tpl-view] modal elements not found');
+}
 
   console.log('[organize] JS ready');
+const $modal  = document.getElementById('confirmModal');
+const $msg    = document.getElementById('confirmMessage');
+const $ok     = document.getElementById('confirmOk');
+const $cancel = document.getElementById('confirmCancel');
+
+if ($modal && $msg && $ok && $cancel) {
+  let onOk = null, onCancel = null;
+
+  function openConfirm(message, _onOk, _onCancel) {
+    $msg.textContent = message;
+    onOk = _onOk; onCancel = _onCancel || null;
+    $modal.style.display = 'flex';
+  }
+  function closeConfirm() {
+    $modal.style.display = 'none';
+    onOk = null; onCancel = null;
+  }
+  $ok.addEventListener('click', () => { if (onOk) onOk(); closeConfirm(); });
+  $cancel.addEventListener('click', () => { if (onCancel) onCancel(); closeConfirm(); });
+  $modal.addEventListener('click', (e) => {
+    if (e.target === $modal) { if (onCancel) onCancel(); closeConfirm(); }
+  });
+
+  // 1) Đổi tên
+  document.querySelectorAll('form.row input[name="tenCuocThi"]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const form = e.target.closest('form');
+      const init = e.target.dataset.init || '';
+      const now  = e.target.value.trim();
+      if (now === init) return;
+      openConfirm(`Đổi tên cuộc thi từ “${init}” → “${now}”?`,
+        () => form.submit(),
+        () => { e.target.value = init; }
+      );
+    });
+  });
+
+  // 2) Bật/Tắt
+  document.querySelectorAll('form.row input[name="trangThai"]').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const form = e.target.closest('form');
+      const init = (e.target.dataset.init === '1');
+      const now  = e.target.checked;
+      if (now === init) return;
+      openConfirm(`Xác nhận ${now ? 'BẬT' : 'TẮT'} cuộc thi này?`,
+        () => form.submit(),
+        () => { e.target.checked = init; }
+      );
+    });
+  });
+
+  // tuỳ chọn: expose nếu muốn gọi tay trong console
+  window.openConfirm = openConfirm;
+} else {
+  console.warn('[confirm] modal elements not found');
+}
+
+
+
 });

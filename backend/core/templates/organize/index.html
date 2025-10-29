@@ -98,11 +98,11 @@
       color: #223382;
       border: none;
       border-radius: 14px;
-      padding: 7px 14px;
+      padding: 5px 10px;
       font-weight: 500;
       cursor: pointer;
       text-align: center;
-      font-size: calc(var(--font-base) 4px);
+      font-size: 13px;
 
       -webkit-backdrop-filter: blur(8px) saturate(130%);
       backdrop-filter: blur(8px) saturate(130%);
@@ -110,12 +110,17 @@
         0 12px 24px rgba(173, 188, 244, 0.25),
         inset 0 1px 0 rgba(255, 255, 255, 0.25);
     }
-      .btn-sm {
-    padding: 4px 10px;
-    font-size: 12px;
-    border-radius: 10px;
-    opacity: .95;          /* nổi hơn trên nền glass */
-  }
+/* Nút icon: cao như .btn và canh giữa theo trục dọc */
+.btn-icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;   /* giống .btn để cao ngang nhau */
+  line-height: 1;      /* tránh kéo dãn chiều cao */
+  vertical-align: middle;
+}
+
+
 
     .btn::after {
       /* highlight gợn kính */
@@ -161,7 +166,6 @@
 
         .code {
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            border: 1px solid #1f2937;
             padding: 2px 6px;
             border-radius: 6px
         }
@@ -238,6 +242,43 @@
         .switch input:checked+.slider:before {
             transform: translateX(20px);
         }
+        /* ------- Zebra table for modal config view ------- */
+#tplv-content table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 14px;
+  overflow: hidden;          /* clip nền các hàng theo radius */
+  border: 1px solid #334155; /* viền nhẹ */
+}
+
+#tplv-content thead th {   
+  background: #0b1220;        /* đầu bảng đậm hơn */
+  color: #e5e7eb;
+  border-bottom: 1px solid #334155;
+  padding: 8px 10px;
+  position: sticky; top: 0; z-index: 1; /* cố định header khi nội dung dài */
+  width: 20px;
+
+}
+
+#tplv-content tbody tr:nth-child(odd) {
+  background: rgba(255,255,255,0.12);   /* hàng 1,3,5... đậm hơn */
+}
+
+#tplv-content tbody tr:nth-child(even) {
+  background: rgba(255,255,255,0.06);   /* hàng 2,4,6... nhạt hơn */
+}
+
+#tplv-content tbody tr:hover {
+  background: rgba(255,255,255,0.18);   /* hover nổi hơn */
+}
+
+#tplv-content td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #1f2937;
+}
+
     </style>
 {% endblock %}
 
@@ -349,15 +390,20 @@
                                  <button class="btn" type="button" data-open-tpl-modal data-btid="{{ bt.id }}">
                                    Cấu hình mẫu chấm
                                  </button>
-+
+
                                  {# Nếu đã có file/sections thì hiển thị nút xem cấu hình #}
                                  {% if bt.template_sections.all|length %}
-                                   <button class="btn btn-sm" type="button"
-                                           data-open-tpl-view
-                                           data-target="tplview-{{ bt.id }}">
-                                     Cấu hình đã thêm
-                                   </button>
-+
+                                    <button class="btn btn-icon" type="button"
+                                            data-open-tpl-view
+                                            data-target="tplview-{{ bt.id }}"
+                                            title="Xem cấu hình đã thêm"
+                                            aria-label="Xem cấu hình đã thêm">
+                                    <img src="{% static 'pics/more.png' %}"
+                                        alt="Xem cấu hình"
+                                        width="18" height="18"
+                                        style="display:block;pointer-events:none">
+                                    </button>
+
                                    {# Nội dung bảng chi tiết render sẵn (ẩn), khi bấm sẽ copy vào popup #}
                                    <div id="tplview-{{ bt.id }}" style="display:none">
                                      <div style="margin-bottom:8px">
@@ -365,14 +411,14 @@
                                        &nbsp;•&nbsp;
                                        <span class="code">{{ bt.ma }}</span> {{ bt.tenBaiThi }}
                                      </div>
-+
-                                     <table class="table" style="width:100%; border-collapse:collapse">
+
+                                     <table class="table" style="width:100%;">
                                        <thead>
                                          <tr>
-                                           <th style="text-align:left; border-bottom:1px solid #334155; padding:6px 8px">Mục lớn</th>
-                                           <th style="text-align:left; border-bottom:1px solid #334155; padding:6px 8px">Mục nhỏ</th>
-                                           <th style="text-align:right; border-bottom:1px solid #334155; padding:6px 8px">Điểm/Max</th>
-                                           <th style="text-align:left; border-bottom:1px solid #334155; padding:6px 8px">Ghi chú</th>
+                                           <th style="text-align:center; border-bottom:1px solid #334155; padding:6px 8px">Mục lớn</th>
+                                           <th style="text-align:center; border-bottom:1px solid #334155; padding:6px 8px">Mục nhỏ</th>
+                                           <th style="text-align:center; border-bottom:1px solid #334155; padding:6px 8px">Điểm/Max</th>
+                                           <th style="text-align:center; border-bottom:1px solid #334155; padding:6px 8px">Ghi chú</th>
                                          </tr>
                                        </thead>
                                         <tbody>
@@ -387,7 +433,7 @@
                                                 {{ i.content }}
                                                 </td>
 
-                                                <td style="padding:6px 8px; text-align:right">
+                                                <td style="padding:6px 8px; text-align:center">
                                                 {% if i.max_score or i.max_score == 0 %}
                                                     {{ i.max_score }}
                                                 {% else %}
@@ -436,7 +482,7 @@
     <div id="time-modal"
         style="display:none; position:fixed; inset:0; background:#0009; z-index:1000; align-items:center; justify-content:center;">
         <div
-            style="background:#111827; border:1px solid #1f2937; border-radius:12px; padding:16px; width:640px; max-width:95vw">
+            style="background:#111827; border:1px solid #1f2937; border-radius:12px; padding:16px; width:1100px; max-width:95vw">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
                 <div class="sec-title">Cấu hình thang thời gian</div>
                 <button id="tm-close" class="btn" type="button">Đóng</button>
@@ -486,7 +532,7 @@
 <!-- MODAL xem cấu hình đã thêm -->
 <div id="tpl-view-modal"
      style="display:none; position:fixed; inset:0; background:#0009; z-index:1000; align-items:center; justify-content:center;">
-  <div class="card" style="width:120px; max-width:96vw; padding:16px">
+  <div class="card" style="width:1200px; max-width:96vw; padding:16px">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
       <div class="sec-title">Cấu hình đã thêm</div>
       <button id="tplv-close" class="btn btn-sm" type="button">Đóng</button>

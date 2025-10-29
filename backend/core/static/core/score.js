@@ -15,6 +15,95 @@ function getCookie(name) {
     return null;
 }
 
+// === Custom confirm (glass modal) ===
+function confirmDialog(message, title = 'Xác nhận') {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('confirmModal');
+    const msgEl   = document.getElementById('confirmMessage');
+    const titleEl = document.getElementById('confirmTitle');
+    const okBtn   = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+
+    if (!overlay || !msgEl || !okBtn || !cancelBtn) {
+      // fallback nếu thiếu markup
+      resolve(window.confirm(message));
+      return;
+    }
+
+    titleEl && (titleEl.textContent = title);
+    msgEl.textContent = message;
+    overlay.style.display = 'flex';
+
+    // đóng & trả kết quả
+    const cleanup = (val) => {
+      overlay.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onClickOutside);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onClickOutside = (e) => { if (e.target === overlay) cleanup(false); };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onClickOutside);
+    document.addEventListener('keydown', onKey);
+
+    // focus mặc định vào OK
+    setTimeout(() => okBtn.focus(), 0);
+  });
+}
+
+// === Debounce helper ===
+function debounce(fn, delay = 250) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// === Suggestion helpers ===
+function buildSuggestURL(q, ctVal) {
+  // Nếu bạn dùng endpoint khác, đổi ở đây (vd: `/score/suggest/?q=...&ct=...`)
+  const params = new URLSearchParams({
+    ajax: 'suggest',
+    q: q || '',
+    ct: ctVal || ''
+  });
+  return `/score/?${params.toString()}`;
+}
+
+function renderSuggestions(box, list) {
+  if (!box) return;
+  if (!Array.isArray(list) || list.length === 0) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = list
+    .map(it => `<a href="#" data-code="${it.maNV}" data-name="${it.hoTen}">${it.maNV} — ${it.hoTen}</a>`)
+    .join('');
+  box.style.display = 'block';
+}
+
+async function fetchJSON(url) {
+  const r = await fetch(url, { credentials: 'same-origin' });
+  return r.json();
+}
+function fillSelect(sel, items, makeOption) {
+  sel.innerHTML = '';
+  sel.appendChild(new Option('— Tất cả —', ''));
+  items.forEach(it => sel.appendChild(makeOption(it)));
+  sel.disabled = !(items && items.length > 0);
+  if (!sel.disabled) sel.focus();
+}
+
+
 // === TIME helpers ===
 function parseSeconds(v) {
     if (!v) return null;
@@ -133,24 +222,206 @@ function saveTplScores() {
 
 // === Page init ===
 (function initScorePage() {
-    const saveBtn = document.getElementById('saveBtn');
-    if (!saveBtn) return;
-    // Delegate: mở modal TEMPLATE – luôn hoạt động
-    document.addEventListener('click', function (e) {
-        const btn = e.target.closest('.tpl-open-btn');
-        if (!btn) return;
-        const btid = parseInt(btn.dataset.btid, 10);
-        const bcode = btn.dataset.bcode || '';
-        openTemplateModal(btid, bcode);
+  const saveBtn = document.getElementById('saveBtn');
+
+  // --- SUGGEST: gợi ý theo ký tự gõ ---
+  const input = document.getElementById('searchInput');
+  const box = document.getElementById('suggestBox');
+  if (input && box) {
+    const getCT = () =>
+      (document.querySelector('select[name="ct"]')?.value) ||
+      (document.querySelector('input[name="ct"]')?.value) || '';
+
+    const onType = debounce(async () => {
+      const q = (input.value || '').trim();
+      const ct = getCT();
+      if (!ct || q.length === 0) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+      try {
+        const res = await fetch(buildSuggestURL(q, ct), { credentials: 'same-origin' });
+        const data = await res.json(); // [{maNV, hoTen}, ...]
+        renderSuggestions(box, data);
+      } catch (e) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+      }
+    }, 250);
+
+    // Gõ để tìm
+    input.addEventListener('input', onType);
+
+    // Chọn 1 dòng suggestion -> điền vào input và ẩn box
+    box.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (!a) return;
+      e.preventDefault();
+      input.value = `${a.dataset.code} — ${a.dataset.name}`;
+      box.style.display = 'none';
     });
 
+    // Click ra ngoài -> ẩn box
+    document.addEventListener('click', (e) => {
+      if (e.target === input || box.contains(e.target)) return;
+      box.style.display = 'none';
+    });
+  }
+
+  (function enhanceSearchGuard() {
+    const form = document.getElementById('searchForm');
+    const btn = form ? form.querySelector('button[type="submit"]') : null;
+    const input = document.getElementById('searchInput');
+    const ctSelect = document.getElementById('ctSelect');
+    const hintCard = document.getElementById('searchHintCard');
+    const hintText = document.getElementById('searchHintText');
+
+    if (!form || !btn || !input) return;
+
+    // helper hiển thị/ẩn thẻ thông báo
+    function showHint(text) {
+      if (!hintCard || !hintText) return;
+      hintText.innerHTML = text;
+      hintCard.style.display = 'block';
+      hintCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function hideHint() {
+      if (hintCard) hintCard.style.display = 'none';
+    }
+
+    // ban đầu luôn ẩn thông báo
+    hideHint();
+
+    // xử lý khi submit
+    form.addEventListener('submit', async (e) => {
+      const q = (input.value || '').trim();
+      const ct = ctSelect ? ctSelect.value : '';
+
+      if (!ct) {
+        e.preventDefault();
+        showHint('Vui lòng chọn <b>Cuộc thi</b> bên trên trước khi tìm thí sinh.');
+        ctSelect && ctSelect.focus();
+        return;
+      }
+
+      // nếu ô nhập rỗng => show thông báo & chặn form
+      if (!q) {
+        e.preventDefault();
+        showHint('Vui lòng nhập <b>Mã NV</b> hoặc <b>họ tên</b> để tìm thí sinh.');
+        input.focus();
+
+         const scoreCard = document.getElementById('scoreCard');
+         if (scoreCard) scoreCard.style.display = 'none';
+        return;
+      }
+
+      // nếu có nhập -> kiểm tra thí sinh thuộc cuộc thi hay không
+      try {
+        const url = `/score/?ajax=suggest&q=${encodeURIComponent(q)}&ct=${encodeURIComponent(ct)}`;
+        const res = await fetch(url, { credentials: 'same-origin' });
+        const list = await res.json();
+
+        if (Array.isArray(list) && list.length > 0) {
+          hideHint();
+          return;
+        }
+      } catch (err) {
+        e.preventDefault();
+        showHint('Không thể kiểm tra thí sinh lúc này. Vui lòng thử lại sau.');
+      }
+    });
+  })();
+
+
+    const ctSelect = document.getElementById('ctSelect');
+    const vtSelect = document.getElementById('vtSelect');
+    const btSelect = document.getElementById('btSelect');
+    const hintCard = document.getElementById('searchHintCard');
+    const scoreCard = document.getElementById('scoreCard');
+    
+
+    if (ctSelect && vtSelect && btSelect) {
+        ctSelect.addEventListener('change', async () => {
+          const ct = (ctSelect.value || '').trim();
+
+          // 1) Reset UI nhẹ
+          hintCard && (hintCard.style.display = 'none');
+          scoreCard && (scoreCard.style.display = 'none');
+          const input = document.getElementById('searchInput');
+          const box = document.getElementById('suggestBox');
+          const resultCard = document.querySelector('.card[data-type="result"]');
+          if (input) input.value = '';
+          if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+          if (resultCard) resultCard.style.display = 'none';
+
+          // 2) Nếu CHƯA chọn cuộc thi -> xóa & khóa dropdown con rồi dừng
+          if (!ct) {
+            fillSelect(vtSelect, [], (v) => new Option(v.tenVongThi, v.id));
+            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+            return;
+          }
+
+          // 3) Hiển thị trạng thái "đang tải" để người dùng thấy phản hồi ngay
+          vtSelect.innerHTML = '';
+          vtSelect.appendChild(new Option('Đang tải vòng thi...', ''));
+          vtSelect.disabled = true;
+
+          btSelect.innerHTML = '';
+          btSelect.appendChild(new Option('— Tất cả —', ''));
+          btSelect.disabled = true;
+
+          // 4) Nạp rounds từ server
+          try {
+            const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}`);
+            // fillSelect sẽ tự bật/tắt disabled dựa trên độ dài mảng
+            fillSelect(vtSelect, data.rounds || [], (v) => new Option(v.tenVongThi, v.id));
+            // Bài thi luôn reset rỗng khi mới chọn CT
+            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+
+            // Tùy UX: nếu có vòng thi thì focus vào vtSelect
+            if (!vtSelect.disabled) vtSelect.focus();
+          } catch (err) {
+            // Lỗi thì reset sạch và thông báo
+            fillSelect(vtSelect, [], (v) => new Option(v.tenVongThi, v.id));
+            fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+            showToast('Không tải được vòng thi. Vui lòng thử lại.', true);
+          }
+        });
+
+        // khi đổi vòng thi → nạp bài thi
+        vtSelect.addEventListener('change', async () => {
+            const ct = ctSelect.value || '';
+            const vt = vtSelect.value || '';
+            if (!vt) {
+              fillSelect(btSelect, [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+              return;
+            }
+            const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}&vt=${encodeURIComponent(vt)}`);
+            fillSelect(btSelect, data.tests || [], (b) => new Option(`${b.ma} — ${b.tenBaiThi}`, b.id));
+        });
+    }
+
+
+    // --- Delegate: mở modal TEMPLATE – luôn hoạt động ---
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('.tpl-open-btn');
+      if (!btn) return;
+      const btid = parseInt(btn.dataset.btid, 10);
+      const bcode = btn.dataset.bcode || '';
+      openTemplateModal(btid, bcode);
+    });
+
+
     // Toggle TIME enable/disable input
-    document.querySelectorAll('.done-toggle').forEach(cb => {
-        const id = cb.dataset.btid;
-        const wrap = document.querySelector(`.time-wrap[data-btid="${id}"]`);
-        const input = wrap ? wrap.querySelector('.time-input') : null;
-        const pv = document.getElementById(`preview_${id}`);
-        const update = () => {
+    if (document.querySelector('.done-toggle')) {
+        document.querySelectorAll('.done-toggle').forEach(cb => {
+            const id = cb.dataset.btid;
+            const wrap = document.querySelector(`.time-wrap[data-btid="${id}"]`);
+            const input = wrap ? wrap.querySelector('.time-input') : null;
+            const pv = document.getElementById(`preview_${id}`);
+            const update = () => {
             if (!wrap || !input) return;
             if (cb.checked) {
                 wrap.classList.remove('hidden');
@@ -162,94 +433,139 @@ function saveTplScores() {
                 input.value = '';
                 if (pv) pv.textContent = '0';
             }
-        };
-        cb.addEventListener('change', update);
-        update();
-    });
+            };
+            cb.addEventListener('change', update);
+            update();
+        });
+    }
+
 
     // TIME preview by rules
-    document.querySelectorAll('.time-wrap').forEach(wrap => {
-        const rules = JSON.parse(wrap.dataset.rules || '[]');
-        const input = wrap.querySelector('.time-input');
-        const out = wrap.querySelector('.time-score');
-        if (!input || !out) return;
-        input.addEventListener('input', () => {
+    if (document.querySelector('.time-wrap')) {
+        document.querySelectorAll('.time-wrap').forEach(wrap => {
+            const rules = JSON.parse(wrap.dataset.rules || '[]');
+            const input = wrap.querySelector('.time-input');
+            const out = wrap.querySelector('.time-score');
+            if (!input || !out) return;
+            input.addEventListener('input', () => {
             const sec = parseSeconds(input.value);
             let score = 0;
             if (sec !== null) {
                 for (const r of rules) {
-                    if (sec >= r.s && sec <= r.e) { score = r.score; break; }
+                if (sec >= r.s && sec <= r.e) { score = r.score; break; }
                 }
             }
             out.textContent = score;
+            });
         });
-    });
+    }
+
 
     // Save (AJAX)
-    saveBtn.addEventListener('click', async function () {
-        const payload = {
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async function () {
+            const payload = {
             thiSinh: saveBtn.dataset.ts || '',
             ct_id: saveBtn.dataset.ct || null,
             scores: {}, done: {}, times: {}
-        };
+            };
 
-        // POINTS
-        document.querySelectorAll('input[name^="score_"]').forEach(i => {
-            if (i.value !== '') payload.scores[i.name.replace('score_', '')] = i.value;
-        });
+            // POINTS
+            let hasPointsError = false;
+            document.querySelectorAll('input[name^="score_"]').forEach(i => {
+              const raw = i.value.trim();
+              if (raw === '') { i.classList.remove('invalid'); return; }
 
-        // TIME
-        let hasTimeError = false;
-        document.querySelectorAll('.done-toggle').forEach(cb => {
+              const val = parseInt(raw, 10);
+              const max = parseInt(i.getAttribute('max') || '0', 10);
+
+              if (Number.isNaN(val) || val < 0 || val > max) {
+                hasPointsError = true;
+                i.classList.add('invalid');
+              } else {
+                i.classList.remove('invalid');
+                payload.scores[i.name.replace('score_', '')] = val;
+              }
+            });
+
+            if (hasPointsError) {
+              showToast('Có điểm không hợp lệ.', true);
+              return;
+            }
+
+            // TIME
+            let hasTimeError = false;
+            document.querySelectorAll('.done-toggle').forEach(cb => {
             const id = cb.dataset.btid;
             payload.done[id] = cb.checked;
             if (cb.checked) {
                 const t = document.querySelector(`input[name="time_${id}"]`);
                 if (!t || t.value.trim() === '') {
-                    hasTimeError = true;
-                    t && t.classList.add('border-red-500');
+                hasTimeError = true;
+                t && t.classList.add('border-red-500');
                 } else {
-                    t.classList.remove('border-red-500');
-                    payload.times[id] = t.value.trim();
+                t.classList.remove('border-red-500');
+                payload.times[id] = t.value.trim();
                 }
             }
-        });
-        if (hasTimeError) {
+            });
+            if (hasTimeError) {
             showToast('Vui lòng nhập thời gian cho bài đã tick Hoàn thành (mm:ss hoặc giây).', true);
             return;
-        }
-
-        try {
-            const res = await fetch(window.location.pathname + window.location.search, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            if (!res.ok || !data.ok) {
-                showToast(data.message || 'Có lỗi khi lưu.', true);
-                if (data.errors && data.errors.length) console.warn('Errors:', data.errors);
-                return;
             }
 
-            // cập nhật preview/inputs theo điểm đã lưu
+            try {
+            async function postScores(body) {
+              const res = await fetch(window.location.pathname + window.location.search, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'X-CSRFToken': getCookie('csrftoken')
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+              });
+              const data = await res.json();
+              return { res, data };
+            }
+
+            let { res, data } = await postScores(payload);
+
+            // Nếu server báo đã có điểm → hỏi xác nhận
+            if (res.status === 409 && data?.code === 'already_scored') {
+              const ok = await confirmDialog(data.message || 'Thí sinh này đã được chấm điểm. Bạn có chắc chắn muốn chấm lại không?');
+              if (!ok) {
+                showToast('Đã hủy chấm lại.', true);
+                return;
+              }
+              // gửi lại với cờ force=1
+              payload.force = 1;
+              ({ res, data } = await postScores(payload));
+            }
+
+            // xử lý lỗi khác
+            if (!res.ok || data?.ok === false) {
+              showToast(data?.message || 'Lưu điểm thất bại.', true);
+              return;
+            }
+
+            // cập nhật preview ngay khi lưu thành công
             const saved = data.saved_scores || {};
             Object.keys(saved).forEach(id => {
-                const pv = document.getElementById(`preview_${id}`);
-                if (pv) pv.textContent = saved[id];
-                const inp = document.querySelector(`input[name="score_${id}"]`);
-                if (inp) inp.value = saved[id];
+              const pv = document.getElementById(`preview_${id}`);
+              if (pv) pv.textContent = saved[id];
+              const inp = document.querySelector(`input[name="score_${id}"]`);
+              if (inp) inp.value = saved[id];
             });
 
             showToast(data.message || 'Đã lưu.');
-        } catch (e) {
+
+            } catch (e) {
             console.error(e);
             showToast('Không thể kết nối server.', true);
-        }
-    });
+            }
+        });
+    }
+
 })();

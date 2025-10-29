@@ -169,6 +169,29 @@ def _parse_seconds(v):
     except Exception:
         return None
 
+def _resolve_thi_sinh_from_query(q: str):
+    if not q:
+        return None
+    raw = q.strip()
+    # Nếu người dùng chọn từ suggestion kiểu "TS001 — Nguyễn Văn A"
+    if "—" in raw:
+        maybe_code = raw.split("—", 1)[0].strip()
+        ts = ThiSinh.objects.filter(maNV__iexact=maybe_code).first()
+        if ts:
+            return ts
+    # Thử mã NV (tách token đầu)
+    token = raw.split()[0]
+    ts = ThiSinh.objects.filter(maNV__iexact=token).first()
+    if ts:
+        return ts
+    # Cuối cùng thử khớp tên (exact trước)
+    ts = ThiSinh.objects.filter(hoTen__iexact=raw).first()
+    if ts:
+        return ts
+    # Cho “tên chứa” để tăng độ linh hoạt (lấy người đầu)
+    return ThiSinh.objects.filter(hoTen__icontains=raw).order_by("maNV").first()
+
+
 
 @ensure_csrf_cookie
 @judge_required
@@ -224,6 +247,28 @@ def score_view(request):
         created = updated = 0
         errors = []
         saved_scores = {}  # {bt_id: điểm_đã_lưu}
+
+        force = bool(payload.get("force"))
+        incoming_ids = set()
+
+        incoming_ids.update(int(k) for k in (scores or {}).keys() if str(k).isdigit())
+        incoming_ids.update(int(k) for k in (done or {}).keys()   if str(k).isdigit())
+        incoming_ids.update(int(k) for k in (times or {}).keys()  if str(k).isdigit())
+
+        if incoming_ids:
+            existed_qs = PhieuChamDiem.objects.filter(
+                thiSinh=thi_sinh, baiThi_id__in=list(incoming_ids)
+            ).values_list("baiThi__ma", flat=True)
+            existed_codes = list(existed_qs)
+
+            if existed_codes and not force:
+                return JsonResponse({
+                    "ok": False,
+                    "code": "already_scored",
+                    "message": "Thí sinh này đã được chấm điểm. Bạn có chắc chắn muốn chấm lại không?",
+                    "existed_tests": existed_codes,
+                }, status=409)
+
 
         with transaction.atomic():
             # 1) POINTS
@@ -288,18 +333,25 @@ def score_view(request):
                 )
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
-
-        return JsonResponse({
-            "ok": True,
-            "message": f"Đã lưu: mới {created}, cập nhật {updated}, lỗi {len(errors)}.",
-            "errors": errors,
-            "saved_scores": saved_scores,
-            "debug": {
-                "count_all": len(bai_qs),
-                "count_points": sum(1 for b in bai_qs if _is_points(b)),
-                "count_time": sum(1 for b in bai_qs if _is_time(b)),
-            }
-        })
+        if errors:
+            return JsonResponse({
+                "ok": False,
+                "message": f"Điểm số không hợp lệ ở {len(errors)} mục.",
+                "errors": errors,
+                "saved_scores": saved_scores,
+            }, status=400)
+        else:
+            return JsonResponse({
+                "ok": True,
+                "message": f"Đã lưu điểm số thí sinh.",
+                "errors": errors,
+                "saved_scores": saved_scores,
+                "debug": {
+                    "count_all": len(bai_qs),
+                    "count_points": sum(1 for b in bai_qs if _is_points(b)),
+                    "count_time": sum(1 for b in bai_qs if _is_time(b)),
+                }
+            })
 
     # GET: render trang
     query = (request.GET.get("q") or "").strip()
@@ -309,14 +361,27 @@ def score_view(request):
     bt_param = request.GET.get("bt")
 
 
-    # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}, lọc theo cuộc thi nếu có (VÀ phải đang bật)
-    if request.headers.get("x-requested-with") == "XMLHttpRequest" and request.GET.get("ajax") == "1" and query:
-        ct_for_suggest = CuocThi.objects.filter(trangThai=True, id=ct_param).first() if ct_param else None
-        base_qs = ThiSinh.objects.all()
-        if ct_for_suggest:
-            base_qs = base_qs.filter(cuocThi=ct_for_suggest)  # ← lọc theo mact ở ThiSinh
-        qs = base_qs.filter(hoTen__icontains=query).order_by("maNV").values("maNV", "hoTen")[:20]
-        return JsonResponse({"ok": True, "suggestions": list(qs)})
+    # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}; bắt buộc phải chọn Cuộc thi đang bật
+    if request.GET.get("ajax") in ("suggest", "1"):
+        query = (request.GET.get("q") or "").strip()
+        if not query:
+            return JsonResponse([], safe=False)
+
+        ct_id = request.GET.get("ct")
+        ct = CuocThi.objects.filter(trangThai=True, id=ct_id).first()
+        if not ct:
+            # Chưa chọn CT hoặc CT không hợp lệ/không bật -> không gợi ý
+            return JsonResponse([], safe=False)
+
+        qs = (
+            ThiSinh.objects
+            .filter(cuocThi=ct)
+            .filter(Q(maNV__icontains=query) | Q(hoTen__icontains=query))
+            .order_by("maNV")
+            .values("maNV", "hoTen")[:20]
+        )
+        return JsonResponse(list(qs), safe=False)
+
 
 
 
@@ -338,11 +403,16 @@ def score_view(request):
 
     selected_ts = None
     if selected_code:
-        selected_ts = ThiSinh.objects.filter(Q(maNV__iexact=selected_code) | Q(hoTen__iexact=selected_code)).first()
+        selected_ts = ThiSinh.objects.filter(
+            Q(maNV__iexact=selected_code) | Q(hoTen__iexact=selected_code)
+        ).first()
+    elif query:
+        # Người dùng bấm Tìm với ô textfield "q"
+        selected_ts = _resolve_thi_sinh_from_query(query)
 
     # Chỉ lấy danh sách CT đang bật...
     cuoc_this_active = CuocThi.objects.filter(trangThai=True).order_by("-id")
-    ct = cuoc_this_active.filter(id=ct_param).first() if ct_param else cuoc_this_active.first()
+    ct = cuoc_this_active.filter(id=ct_param).first() if ct_param else None
 
    # ✅ Nếu thí sinh không thuộc cuộc thi đang chọn → bỏ chọn
     if ct and selected_ts:
@@ -356,7 +426,6 @@ def score_view(request):
     selected_bt = None
 
     if ct:
-        from .models import VongThi, BaiThi
         rounds = list(VongThi.objects.filter(cuocThi=ct).order_by("id").values("id", "tenVongThi"))
         if vt_param:
             selected_vt = VongThi.objects.filter(cuocThi=ct, id=vt_param).first()
@@ -382,11 +451,36 @@ def score_view(request):
     # Tính lại tổng tối đa cho đúng phần đang hiển thị
     total_max = sum(b.get("max", 0) for blk in structure for b in blk.get("bai_list", []))
 
+    # --- AJAX: meta cho dropdown động ---
+    if request.GET.get("ajax") == "meta":
+        ct_id = request.GET.get("ct")
+        vt_id = request.GET.get("vt")
+        data = {"rounds": [], "tests": []}
+
+        if ct_id:
+            ct_obj = CuocThi.objects.filter(trangThai=True, id=ct_id).first()
+            if ct_obj:
+                data["rounds"] = list(
+                    VongThi.objects.filter(cuocThi=ct_obj)
+                    .order_by("id")
+                    .values("id", "tenVongThi")
+                )
+                if vt_id:
+                    vt_obj = VongThi.objects.filter(cuocThi=ct_obj, id=vt_id).first()
+                    if vt_obj:
+                        data["tests"] = list(
+                            BaiThi.objects.filter(vongThi=vt_obj)
+                            .order_by("id")
+                            .values("id", "ma", "tenBaiThi")
+                        )
+        return JsonResponse(data)
+
+
 
 
     return render(request, "score/index.html", {
         "ct": ct,
-        "selected_ct_id": ct.id if ct else None,
+        "selected_ct_id": int(ct_param) if ct_param else None,
         "structure": structure,
         "total_max": total_max,
         "query": query,
