@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Quản Lý Tổng | ExamSite{% endblock %}
+
+{% block head_extra %}
+<style>
+    .dist-bar {
+        height: 0.75rem;
+        width: 100%;
+        border-radius: 9999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+    }
+
+    .dist-seg {
+        height: 100%;
+        float: left;
+        width: calc(var(--p, 0) * 1%);
+    }
+
+    .seg-high {
+        background: #22c55e;
+    }
+
+    .seg-mid {
+        background: #f59e0b;
+    }
+
+    .seg-low {
+        background: #ef4444;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="mx-auto max-w-7xl px-4">
+    {% if no_contest %}
+    <div class="glass rounded-2xl p-6 mt-6 text-center">
+        <h1 class="text-2xl font-semibold mb-2">Chưa có cuộc thi nào đang diễn ra</h1>
+        <p class="opacity-80">Hãy tạo cuộc thi mới tại <a href="/organize" class="underline hover:text-blue-400">Trang
+                Tổ chức</a>.</p>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6 items-stretch">
+        <!-- A -->
+        <div class="lg:col-span-5 glass rounded-2xl p-5 flex items-center justify-between">
+            <div>
+                <div class="text-sm opacity-70 mb-1">Cuộc thi đang diễn ra</div>
+                <h2 class="text-2xl font-semibold leading-tight">{{ contest.tenCuocThi }}</h2>
+                <div class="text-sm opacity-75 mt-2">Mã: <span class="font-semibold">{{ contest.ma }}</span></div>
+            </div>
+            <img src="{% static 'pics/tournament.png' %}" alt="" class="h-14 w-14 opacity-90">
+        </div>
+
+
+        <!-- B -->
+        <div class="lg:col-span-4 glass rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-semibold">Phân bố điểm</h3>
+                <!-- <img src="{% static 'icons/chart.svg' %}" alt="" class="h-5 w-5 opacity-80"> -->
+            </div>
+
+            <div class="dist-bar">
+                <div class="dist-seg seg-high" style="--p: {{ sr_pcts.high }}"></div>
+                <div class="dist-seg seg-mid" style="--p: {{ sr_pcts.mid }}"></div>
+                <div class="dist-seg seg-low" style="--p: {{ sr_pcts.low }}"></div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 mt-3 text-xs">
+                <div class="flex items-center gap-2">
+                    <span class="inline-block h-2 w-2 rounded-full" style="background:#22c55e"></span>
+                    <span>100–90</span>
+                    <span class="ml-auto font-semibold">{{ sr_counts.high }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block h-2 w-2 rounded-full" style="background:#f59e0b"></span>
+                    <span>89–60</span>
+                    <span class="ml-auto font-semibold">{{ sr_counts.mid }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block h-2 w-2 rounded-full" style="background:#ef4444"></span>
+                    <span>59–0</span>
+                    <span class="ml-auto font-semibold">{{ sr_counts.low }}</span>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- E -->
+        <div class="lg:col-span-3 glass rounded-2xl p-5 flex items-center gap-4">
+            <img src="{% static 'icons/attendant.png' %}" alt="" class="h-10 w-10 opacity-90">
+            <div>
+                <div class="text-sm opacity-70">Số người tham dự</div>
+                <div class="text-2xl font-semibold leading-none">{{ total_thi_sinh }}</div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-3 glass rounded-2xl p-5 flex items-center gap-4">
+            <img src="{% static 'icons/star.svg' %}" alt="" class="h-10 w-10 opacity-90">
+            <div>
+                <div class="text-sm opacity-70">Điểm trung bình</div>
+                <div class="text-2xl font-semibold leading-none">{{ avg_score|floatformat:2 }}</div>
+            </div>
+        </div>
+
+
+        <!-- C -->
+        <div class="lg:col-span-5 glass rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-semibold">Xếp hạng thí sinh</h3>
+                <a href="/ranking?ct={{ contest.id }}" class="text-sm underline opacity-90 hover:opacity-100">Xem đầy
+                    đủ</a>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto max-h-[300px] rounded-xl ring-1 ring-white/10">
+                <table class="min-w-full text-sm text-white">
+                    <thead class="sticky top-0 z-10" style="background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.12);">
+                        <tr>
+                            <th class="px-3 py-2 text-left">#</th>
+                            <th class="px-3 py-2 text-left">Mã NV</th>
+                            <th class="px-3 py-2 text-left">Họ tên</th>
+                            <th class="px-3 py-2 text-left">Đơn vị</th>
+                            <th class="px-3 py-2 text-left">Tổng</th>
+                        </tr>
+                    </thead>
+                    <tbody class="[&_tr]:h-12">
+                        {% for r in rows %}
+                        <tr class="border-b border-white/10 {% if forloop.counter <= 3 %}bg-white/5{% endif %}">
+                            <td class="px-3 py-2">{{ forloop.counter }}</td>
+                            <td class="px-3 py-2">{{ r.maNV }}</td>
+                            <td class="px-3 py-2">{{ r.hoTen }}</td>
+                            <td class="px-3 py-2">{{ r.donVi }}</td>
+                            <td class="px-3 py-2">{{ r.total|floatformat:2 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center opacity-70 py-4">Chưa có dữ liệu</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- D & F placeholder -->
+        <div class="lg:col-span-4 glass rounded-2xl p-6 text-center opacity-70">Phần D (đang phát triển)</div>
+        <div class="lg:col-span-4 glass rounded-2xl p-6 text-center opacity-70">Phần F (đang phát triển)</div>
+
+
+        <!-- H -->
+        <div class="lg:col-span-12 glass rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+                <h3 class="text-lg font-semibold mb-1">Tạo cuộc thi cho riêng bạn</h3>
+                <p class="opacity-80 text-sm">Thiết lập vòng thi, bài thi và thí sinh theo ý muốn.</p>
+                <a href="/organize"
+                    class="inline-block mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Đi tới trang
+                    Tổ chức</a>
+            </div>
+            <img src="{% static 'pics/cup.png' %}" alt="Competition" class="w-64 rounded-xl shadow-lg">
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
