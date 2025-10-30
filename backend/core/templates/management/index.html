@@ -45,7 +45,8 @@
     {% else %}
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6 items-stretch">
         <!-- A -->
-        <div class="lg:col-span-5 glass rounded-2xl p-5 flex items-center justify-between">
+        <div id="contestCard"
+            class="lg:col-span-5 glass rounded-2xl p-5 flex items-center justify-between cursor-pointer hover:bg-white/10 transition">
             <div>
                 <div class="text-sm opacity-70 mb-1">Cuộc thi đang diễn ra</div>
                 <h2 class="text-2xl font-semibold leading-tight">{{ contest.tenCuocThi }}</h2>
@@ -115,7 +116,8 @@
             </div>
             <div class="overflow-x-auto overflow-y-auto max-h-[300px] rounded-xl ring-1 ring-white/10">
                 <table class="min-w-full text-sm text-white">
-                    <thead class="sticky top-0 z-10" style="background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.12);">
+                    <thead class="sticky top-0 z-10"
+                        style="background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.12);">
                         <tr>
                             <th class="px-3 py-2 text-left">#</th>
                             <th class="px-3 py-2 text-left">Mã NV</th>
@@ -159,7 +161,36 @@
             </div>
             <img src="{% static 'pics/cup.png' %}" alt="Competition" class="w-64 rounded-xl shadow-lg">
         </div>
+        <!-- Modal chọn cuộc thi -->
+        <div id="contestModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
+            <div class="glass rounded-2xl p-6 w-[90%] max-w-md">
+                <h3 class="text-lg font-semibold mb-4">Chọn cuộc thi</h3>
+
+                <div class="mb-3">
+                    <input id="contestSearch" type="text" placeholder="Tìm theo tên hoặc mã..."
+                        class="w-full rounded-xl bg-white/10 border border-white/15 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-400">
+                </div>
+
+                <ul id="contestList" class="space-y-2 max-h-[60vh] overflow-y-auto">
+                    {% for item in active_contests %}
+                    <li data-key="{{ item.tenCuocThi }} {{ item.ma }}">
+                        <a href="?ct={{ item.id }}" class="block glass hover:bg-white/10 rounded-xl p-3 transition">
+                            <div class="font-semibold">{{ item.tenCuocThi }}</div>
+                            <div class="text-sm opacity-70">Mã: {{ item.ma }}</div>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <button id="closeModal"
+                    class="mt-4 w-full bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg">Đóng</button>
+            </div>
+        </div>
+
+
     </div>
     {% endif %}
+
 </div>
+<script src="{% static 'core/management.js' %}?v={% now 'U' %}"></script>
 {% endblock %}

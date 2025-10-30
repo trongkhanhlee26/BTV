@@ -6,8 +6,18 @@ from core.views_ranking import _score_type
 
 @judge_required
 def management_view(request):
-    # A — Cuộc thi đang diễn ra
-    ct = CuocThi.objects.filter(trangThai=True).order_by("-id").first()
+    # A — Lấy danh sách cuộc thi đang hoạt động
+    ct_id = request.GET.get("ct")
+    active_contests = CuocThi.objects.filter(trangThai=True).order_by("-id")
+
+    if ct_id:
+        ct = active_contests.filter(id=ct_id).first()
+    else:
+        ct = active_contests.first()
+
+    if not ct:
+        return render(request, "management/index.html", {"no_contest": True})
+
     if not ct:
         return render(request, "management/index.html", {"no_contest": True})
 
@@ -94,4 +104,5 @@ def management_view(request):
         "avg_score": avg_score,
         "score_ranges": score_ranges,
         "sr_pcts": sr_pcts,
+        "active_contests": active_contests,
     })
