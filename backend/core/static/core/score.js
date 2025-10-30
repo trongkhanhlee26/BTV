@@ -129,6 +129,12 @@ function openTemplateModal(btid, code) {
     const modal = document.getElementById('tplModal');
     const maxEl = document.getElementById('tplMax');
     const totalEl = document.getElementById('tplTotal');
+    const thiSinhInModal = document.getElementById('tplThiSinh')?.value || document.getElementById('saveBtn')?.dataset.ts || '';
+    const ctIdInModal    = document.querySelector('[name="ct"]')?.value || null;
+    const TPL_CACHE_KEY  = `tpl:${ctIdInModal || 'ct'}:${thiSinhInModal}:${btid}`;
+    let TPL_CACHE = {};
+    try { TPL_CACHE = JSON.parse(localStorage.getItem(TPL_CACHE_KEY) || '{}'); } catch(e) {}
+
     if (!title || !body || !modal) return;
 
     title.textContent = `Chấm theo mẫu - ${code}`;
@@ -160,8 +166,9 @@ function openTemplateModal(btid, code) {
               <div>${it.stt}. ${it.content}${it.note ? ` <em style="color:#94a3b8">(${it.note})</em>` : ''}</div>
               <div>
                 <input type="number" min="0" max="${it.max}" step="1"
-                       oninput="tplOnChange(${it.id}, ${it.max}, this.value)"
-                       style="width:100px; padding:6px">
+                  data-itemid="${it.id}" value="${(TPL_CACHE.items && TPL_CACHE.items[it.id]) ?? ''}"
+                  oninput="tplOnChange(${it.id}, ${it.max}, this.value)"
+                  style="width:70px; padding:6px">
                 <small class="muted">/ ${it.max}</small>
               </div>
             </div>`
@@ -169,7 +176,94 @@ function openTemplateModal(btid, code) {
                 });
                 out.push(`</div>`);
             });
+            out.push(`
+              <div class="time-wrap" id="tpl-time-wrap" data-rules="[]" 
+                  style="display:grid; grid-template-columns:1fr auto; align-items:center; margin-top:10px;">
+                <div style="font-weight:600; padding-left: 20px;">Thời gian hoàn thành bài thi:</div>
+                <div style="display:flex; justify-content:flex-end; align-items:center; gap:8px;">
+                  <div class="wheel">
+                    <div class="wheel-col" data-type="min">
+                      <ul class="wheel-list">
+                        <li class="wheel-item wheel-spacer"></li>
+                        ${Array.from({length:60},(_,i)=>`<li class="wheel-item">${String(i).padStart(2,'0')}</li>`).join('')}
+                        <li class="wheel-item wheel-spacer"></li>
+                      </ul>
+                      <div class="wheel-mask"></div>
+                    </div>
+                    <div class="wheel-col" data-type="sec">
+                      <ul class="wheel-list">
+                        <li class="wheel-item wheel-spacer"></li>
+                        ${Array.from({length:60},(_,i)=>`<li class="wheel-item">${String(i).padStart(2,'0')}</li>`).join('')}
+                        <li class="wheel-item wheel-spacer"></li>
+                      </ul>
+                      <div class="wheel-mask"></div>
+                    </div>
+                    <div class="wheel-indicator"></div>
+                  </div>
+                  <input type="hidden" id="tplTimeInput" class="time-input" value="00:00">
+                  <span class="time-score" style="display:none"></span>
+                </div>
+              </div>
+            `);
             body.innerHTML = out.join('');
+            initTimeWheels();
+
+            // Prefill điểm từng item từ cache (để cập nhật tổng)
+            document.querySelectorAll('#tplBody input[data-itemid]').forEach(el => {
+              const id  = parseInt(el.dataset.itemid, 10);
+              const max = parseInt(el.getAttribute('max') || '0', 10);
+              if (el.value !== '') tplOnChange(id, max, el.value);
+            });
+
+            // Prefill thời gian cho wheel từ cache
+            if (TPL_CACHE.time) {
+              const [mmRaw, ssRaw] = TPL_CACHE.time.split(':');
+              const mm = Math.max(0, Math.min(59, parseInt(mmRaw||'0',10)));
+              const ss = Math.max(0, Math.min(59, parseInt(ssRaw||'0',10)));
+              const wrap  = document.getElementById('tpl-time-wrap');
+              const minCol= wrap?.querySelector('[data-type="min"]');
+              const secCol= wrap?.querySelector('[data-type="sec"]');
+              const inp   = document.getElementById('tplTimeInput');
+              const ITEM_H= 44;
+              if (minCol && secCol && inp) {
+                minCol.scrollTop = mm * ITEM_H;
+                secCol.scrollTop = ss * ITEM_H;
+                inp.value = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+              }
+            }
+
+            // ✅ Chỉ tăng cường click cho picker trong CHẤM THEO MẪU
+            (function enhanceTplWheelClick() {
+              const wrap = document.getElementById('tpl-time-wrap');
+              if (!wrap) return;
+              const cols = wrap.querySelectorAll('.wheel-col');
+              const ITEM_H = 44;      // đúng với initTimeWheels()
+              const MAX_IDX = 59;     // 0..59
+              function scrollToIndex(col, idx, smooth = true) {
+                idx = Math.max(0, Math.min(MAX_IDX, idx));
+                col.scrollTo({ top: idx * ITEM_H, behavior: smooth ? 'smooth' : 'auto' });
+              }
+              function updateHidden() {
+                const input = wrap.querySelector('.time-input');
+                const minCol = wrap.querySelector('[data-type="min"]');
+                const secCol = wrap.querySelector('[data-type="sec"]');
+                if (!input || !minCol || !secCol) return;
+                const mm = Math.round(minCol.scrollTop / ITEM_H).toString().padStart(2,'0');
+                const ss = Math.round(secCol.scrollTop / ITEM_H).toString().padStart(2,'0');
+                input.value = `${mm}:${ss}`;
+              }
+              cols.forEach(col => {
+                col.addEventListener('click', (e) => {
+                  // Click ở BẤT KỲ vị trí trên cột -> cuộn tới số gần nhất
+                  const rect = col.getBoundingClientRect();
+                  const y = e.clientY - rect.top;       // vị trí click trong cột
+                  const idxApprox = Math.floor((col.scrollTop + y) / ITEM_H) - 1; // bỏ spacer đầu
+                  const idx = Math.max(0, Math.min(MAX_IDX, idxApprox));
+                  scrollToIndex(col, idx, true);
+                  setTimeout(updateHidden, 160);
+                });
+              });
+            })();
         })
         .catch(err => {
             body.innerHTML = `<div style="color:#f87171">Lỗi: ${err.message}</div>`;
@@ -194,33 +288,33 @@ function tplOnChange(itemId, maxVal, raw) {
 }
 
 function saveTplScores() {
-    const saveBtn = document.getElementById('saveBtn');
-    const thiSinh = (saveBtn?.dataset.ts || '').trim();
-    if (!thiSinh) { alert('Chưa chọn thí sinh ở màn hình chính.'); return; }
+  const saveBtn = document.getElementById('saveBtn');
+  const hiddenTS = document.getElementById('tplThiSinh');
+  const thiSinh = (hiddenTS?.value || saveBtn?.dataset.ts || '').trim();
+  if (!thiSinh) { alert('Chưa chọn thí sinh ở màn hình chính.'); return; }
 
-    fetch(`/score/template/${TPL_CTX.btid}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-            thiSinh,
-            items: TPL_CTX.items,
-            ct_id: document.querySelector('[name="ct"]')?.value || null
-        })
-    })
-        .then(r => r.json())
-        .then(res => {
-            if (!res.ok) throw new Error(res.message || 'Không lưu được');
-            const total = res.saved_total ?? 0;
-            const pv = document.getElementById(`preview-total-${TPL_CTX.btid}`);
-            const hidden = document.getElementById(`score-input-${TPL_CTX.btid}`);
-            if (pv) pv.textContent = `Tổng: ${total}`;
-            if (hidden) hidden.value = total;
-            closeTplModal();
-            
-        })
-        .catch(err => alert(err.message));
+  const ctId = document.querySelector('[name="ct"]')?.value || null;
+  const time = document.getElementById('tplTimeInput')?.value || '00:00';
+
+  // tính tổng từ TPL_CTX.items
+  let total = 0;
+  Object.values(TPL_CTX.items).forEach(v => { total += (parseInt(v,10) || 0); });
+
+  // cập nhật preview & hidden ở hàng bài thi
+  const pv     = document.getElementById(`preview-total-${TPL_CTX.btid}`);
+  const hidden = document.getElementById(`score-input-${TPL_CTX.btid}`);
+  const hTime  = document.getElementById(`tpl-time-${TPL_CTX.btid}`);
+  if (pv)     pv.textContent = `Tổng: ${total}`;
+  if (hidden) hidden.value   = total;
+  if (hTime)  hTime.value    = time;
+
+  // Lưu tạm vào localStorage
+  const key = `tpl:${ctId || 'ct'}:${thiSinh}:${TPL_CTX.btid}`;
+  localStorage.setItem(key, JSON.stringify({ items: TPL_CTX.items, time, total }));
+
+  closeTplModal();
 }
+
 
 // === Page init ===
 (function initScorePage() {
@@ -493,7 +587,10 @@ function saveTplScores() {
               if (raw === '') { i.classList.remove('invalid'); return; }
 
               const val = parseInt(raw, 10);
-              const max = parseInt(i.getAttribute('max') || '0', 10);
+              // ưu tiên max trên attribute; nếu không có thì lấy data-max (TEMPLATE)
+              const maxAttr = i.getAttribute('max');
+              const dataMax = i.dataset.max;
+              const max = (maxAttr || dataMax) ? parseInt(maxAttr || dataMax, 10) : Number.POSITIVE_INFINITY;
 
               if (Number.isNaN(val) || val < 0 || val > max) {
                 hasPointsError = true;
@@ -529,6 +626,11 @@ function saveTplScores() {
             showToast('Vui lòng nhập thời gian cho bài đã tick Hoàn thành (mm:ss hoặc giây).', true);
             return;
             }
+            payload.tpl_times = {};
+            document.querySelectorAll('input[name^="tpl_time_"]').forEach(i => {
+              const id = i.name.replace('tpl_time_', '');
+              if (i.value && i.value.trim() !== '') payload.tpl_times[id] = i.value.trim();
+            });
 
             try {
             async function postScores(body) {
@@ -576,6 +678,16 @@ function saveTplScores() {
             });
 
             showToast(data.message || 'Đã lưu.');
+            // clear cache tạm sau khi đã lưu DB
+            const thiSinh = saveBtn.dataset.ts || '';
+            const ctId    = payload.ct_id || null;
+            Object.keys(payload.scores || {}).forEach(id => {
+              // chỉ clear những bài có hidden tpl_time_ (tức là TEMPLATE)
+              if (document.getElementById(`tpl-time-${id}`)) {
+                const key = `tpl:${ctId || 'ct'}:${thiSinh}:${id}`;
+                localStorage.removeItem(key);
+              }
+            });
             setTimeout(() => {
               const ct = (saveBtn?.dataset.ct || '').trim();
               const vt = document.getElementById('vtSelect')?.value || '';
