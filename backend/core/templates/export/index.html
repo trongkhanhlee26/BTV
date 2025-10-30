@@ -8,7 +8,7 @@
 .btn{
   display:inline-flex; align-items:center; gap:8px;
   padding:10px 14px; border-radius:10px; font-weight:700;
-  border:1px solid #16a34a; background:#22c55e; color:#0b2313;
+  border:1px solid #16a34a; background:#22c55e; color:#d8ffe5;
   text-decoration:none; user-select:none; transition:transform .06s ease, box-shadow .2s ease, background .2s ease;
   box-shadow:0 6px 18px rgba(34,197,94,.28);
 }
@@ -20,8 +20,9 @@
 .excel-wrap{
   overflow:auto;
   border-radius:16px;
-  background:#ffffff;
+  background:#ebebeb;
   border:1px solid rgba(0,0,0,.08);
+  opacity: 100%;
 }
 
 /* ==== Bảng: fixed layout để trượt ngang mượt ==== */
@@ -29,14 +30,14 @@ table.export-table{
   border-collapse:separate; border-spacing:0;
   table-layout:fixed; white-space:nowrap;
   width:max-content; min-width:100%;
-  background:#ffffff;
+  background:#ebebeb;
 }
 
 /* ==== Header: to hơn, 2 dòng, sticky trên cùng ==== */
 .export-table thead th{
   position:sticky; top:0; z-index:7;
-  background:#ffffff;
-  font-weight:800; color:#0f172a;
+  background:#ebebeb;
+  font-weight:800; color:#10367d;
   font-size:16px; line-height:1.15;
   padding:10px 10px;
   text-align:center;
@@ -47,21 +48,21 @@ table.export-table{
 /* Hàng filter (nếu cần) cũng sticky dưới header */
 .filter-row th{
   top:56px; z-index:6;
-  background:#ffffff;
+  background:#ebebeb;
   border-bottom:1px solid rgba(0,0,0,.10);
 }
 .filter-row input{
   width:100%; padding:6px 8px; border-radius:10px;
   border:1px solid rgba(15,23,42,.12);
-  background:#ffffff; color:#0f172a;
+  background:#ebebeb; color:#0f172a;
 }
 
 /* ==== Body cells: trắng, đường kẻ nhẹ ==== */
 .export-table td{
   padding:8px 10px;
   border-bottom:1px solid rgba(0,0,0,.06);
-  background:#ffffff;
-  color:#0f172a;
+  background:#ebebeb;
+  color:#10367d;
 }
 .export-table tbody tr:hover td{ background:#f8fafc; }
 
@@ -71,16 +72,12 @@ table.export-table{
 }
 
 /* ==== 3 cột trái cố định (nền trắng + bóng ranh giới) ==== */
-.sticky-col{position:sticky; left:0; z-index:8; background:#ffffff}
+.sticky-col{position:sticky; left:0; z-index:8; background:#ebebeb}
 .sticky-col-1{left:var(--col-left-1,0px)}
 .sticky-col-2{left:var(--col-left-2,0px)}
 .sticky-shadow{box-shadow: 6px 0 10px -6px rgba(0,0,0,.18)}
 
-/* Độ rộng gợi ý — THU GỌN HƠN */
-.col-stt{min-width:44px; width:44px; text-align:right}
-.col-id{min-width:96px; max-width:110px}
-.col-name{min-width:170px; max-width:200px}
-.col-min{min-width:110px; max-width:140px}
+
 
 /* (Tùy chọn) Căn giữa số điểm cho cột >= 4 */
 .export-table td:nth-child(n+4){ text-align:center; }
@@ -93,23 +90,76 @@ table.export-table{
 .export-table thead th:nth-child(1),
 .export-table tbody td:nth-child(1) {
   position: sticky; left: 0;
-  z-index: 9; background: #ffffff;
+  z-index: 9; background: #ebebeb;
 }
 .export-table thead th:nth-child(2),
 .export-table tbody td:nth-child(2) {
   position: sticky; left: var(--col-left-1, 0px);
-  z-index: 9; background: #ffffff;
+  z-index: 9; background: #ebebeb;
 }
 .export-table thead th:nth-child(3),
 .export-table tbody td:nth-child(3) {
   position: sticky; left: var(--col-left-2, 0px);
-  z-index: 9; background: #ffffff;
+  z-index: 9; background: #ebebeb;
   box-shadow: 6px 0 10px -6px rgba(0,0,0,.18);
 }
 
 /* Hover đồng nhất với cột trái */
 .export-table tbody tr:hover td:nth-child(-n+3) {
   background: #f8fafc;
+}
+
+/* === Cho JS toàn quyền set width bằng <colgroup> === */
+.export-table th, .export-table td { width: auto !important; max-width: none !important; min-width: 0 !important; }
+.col-stt, .col-id, .col-name, .col-min { min-width: 0 !important; max-width: none !important; }
+.export-table thead th:nth-child(n+1),
+.export-table tbody td:nth-child(n+1){ width: auto !important; max-width: none !important; min-width: 0 !important; }
+/* ==== ĐƯỜNG KẺ DỌC GIỮA CÁC CỘT ==== */
+.export-table th,
+.export-table td{
+  border-right: 1px solid rgba(0,0,0,.10);
+}
+.export-table th:last-child,
+.export-table td:last-child{
+  border-right: none; /* cột cuối gọn gàng */
+}
+
+/* Đường kẻ dưới header đã có; thêm nhẹ đường kẻ trên body cho đồng bộ */
+.export-table tbody td{
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+
+/* ==== ZEBRA ROWS NHẸ (nhạt hơn nền hiện tại) ==== */
+/* Nền hiện tại: #ebebeb → chọn hai sắc độ rất gần để dịu mắt */
+.export-table tbody tr:nth-child(even) td{
+  background: #ebebeb;   /* giữ màu bạn đang dùng */
+}
+.export-table tbody tr:nth-child(odd) td{
+  background: #f2f2f2;   /* nhạt hơn 1 chút */
+}
+
+/* Giữ zebra cho 3 cột trái (sticky) */
+.export-table tbody tr:nth-child(even) td:nth-child(-n+3){
+  background: #ebebeb;
+}
+.export-table tbody tr:nth-child(odd)  td:nth-child(-n+3){
+  background: #f2f2f2;
+}
+
+/* Hover vẫn nổi bật nhẹ, áp dụng lên cả 3 cột trái */
+.export-table tbody tr:hover td{
+  background: #f8fafc !important;
+}
+
+/* Header + 3 cột trái vẫn đồng bộ viền khi sticky */
+.export-table thead th{
+  border-bottom: 1px solid rgba(0,0,0,.12);
+}
+.export-table thead th:nth-child(3),
+.export-table tbody td:nth-child(3){
+  /* vì cột 3 có shadow, thêm border-right để ranh giới rõ hơn */
+  box-shadow: 6px 0 10px -6px rgba(0,0,0,.18);
+  border-right: 1px solid rgba(0,0,0,.12);
 }
 </style>
 
