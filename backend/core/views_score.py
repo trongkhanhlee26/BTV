@@ -29,19 +29,41 @@ def _pick_competition(preferred_id: int | None):
     return fallback
 def _session_judge(request):
     """Lấy giám khảo từ session (ưu tiên)."""
-    jid = request.session.get("judge_id")
+    jid = request.session.get("judge_pk") or request.session.get("judge_id")
     if jid:
-        return GiamKhao.objects.filter(id=jid).first()
+        return GiamKhao.objects.filter(pk=jid).first()
     return None
 
 def _current_judge(request):
-    user = getattr(request, "user", None)
-    if user and getattr(user, "email", None):
-        gk = GiamKhao.objects.filter(email__iexact=user.email).first()
-        if gk:
-            return gk
+    """
+    Lấy giám khảo đang đăng nhập để ghi vào phiếu.
+    - Ưu tiên lấy từ session: request.session['judge_id'].
+    - Nếu không có session, chỉ THỬ khớp tài khoản hiện tại với GiamKhao đã tồn tại
+      (email hoặc username). Tuyệt đối KHÔNG tự tạo mới.
+    - Nếu vẫn không có -> trả None để view báo 401.
+    """
+    # 1) Ưu tiên giám khảo đang chọn trong session
     gk = _session_judge(request)
-    return gk or GiamKhao.objects.first()
+    if gk:
+        return gk
+
+    # 2) Thử map từ user hiện tại sang GiamKhao có sẵn (không tạo mới)
+    user = getattr(request, "user", None)
+    if user and getattr(user, "is_authenticated", False):
+        email = (getattr(user, "email", "") or "").strip()
+        username = (getattr(user, "username", "") or "").strip()
+
+        if email:
+            gk = GiamKhao.objects.filter(email__iexact=email).first()
+            if gk:
+                return gk
+        if username:
+            gk = GiamKhao.objects.filter(maNV__iexact=username).first()
+            if gk:
+                return gk
+
+    # 3) Không tìm thấy -> để view xử lý (401)
+    return None
 
 
 def _active_competition():
@@ -94,7 +116,7 @@ def _load_form_data(selected_ts, ct, request):
         ):
             if _is_time(bt):
                 rules = list(bt.time_rules.all()) if hasattr(bt, "time_rules") else []
-                this_max = max([r.score for r in rules], default=0)
+                this_max = 20
                 b_type = "TIME"
                 rules_payload = [{"s": r.start_seconds, "e": r.end_seconds, "score": r.score} for r in rules]
                 rules_json = json.dumps(rules_payload, ensure_ascii=False)
@@ -262,7 +284,7 @@ def score_view(request):
 
         if incoming_ids:
             existed_qs = PhieuChamDiem.objects.filter(
-                thiSinh=thi_sinh, baiThi_id__in=list(incoming_ids)
+                thiSinh=thi_sinh, cuocThi=ct, baiThi_id__in=list(incoming_ids)
             ).values_list("baiThi__ma", flat=True)
             existed_codes = list(existed_qs)
 
@@ -297,8 +319,8 @@ def score_view(request):
                     continue
 
                 obj, was_created = PhieuChamDiem.objects.update_or_create(
-                    thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
-                    defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=diem)
+                    thiSinh=thi_sinh, baiThi=bt, cuocThi=ct,
+                    defaults=dict(vongThi=bt.vongThi, diem=diem, giamKhao=judge)
                 )
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
@@ -308,13 +330,25 @@ def score_view(request):
                 if not _is_time(bt):
                     continue
                 btid = bt.id
+                has_input = (
+                    str(btid) in (done or {}) or btid in (done or {}) or
+                    str(btid) in (times or {}) or btid in (times or {})
+                )
+                if not has_input:
+                    continue
                 is_done = bool(done.get(str(btid)) or done.get(btid))
 
                 if not is_done:
-                    # ❗️BỎ TICK → XOÁ phiếu chấm để lần sau load lên coi như "chưa chấm"
-                    PhieuChamDiem.objects.filter(
-                        thiSinh=thi_sinh, giamKhao=judge, baiThi=bt
-                    ).delete()
+                    obj, was_created = PhieuChamDiem.objects.update_or_create(
+                        thiSinh=thi_sinh, baiThi=bt, cuocThi=ct,
+                        defaults=dict(
+                            vongThi=bt.vongThi,
+                            diem=0,
+                            thoiGian=0,
+                            giamKhao=judge
+                        )
+                    )
+                    created += int(was_created); updated += int(not was_created)
                     saved_scores[btid] = 0
                     continue
 
@@ -326,25 +360,26 @@ def score_view(request):
                     errors.append(f"Bài {bt.ma}: thời gian không hợp lệ (mm:ss hoặc giây).")
                     continue
 
-                # Tính điểm theo rule: nếu không match → mặc định Max
-                rule_max = bt.time_rules.aggregate(mx=Max("score")).get("mx") if hasattr(bt, "time_rules") else None
-                match = None
+                try:
+                    seconds = int(seconds or 0)
+                except Exception:
+                    seconds = 0
+
+                # bonus theo rule; không match thì bonus = 0
+                bonus = 0
                 for r in bt.time_rules.all():
                     if r.start_seconds <= seconds <= r.end_seconds:
-                        match = r
+                        bonus = int(r.score)
                         break
-                if match:
-                    diem = int(match.score)
-                else:
-                    diem = int(rule_max) if rule_max is not None else int(bt.cachChamDiem)
+                diem = min(20, 10 + bonus)   # tổng = 10 + bonus (kẹp 20)
 
                 obj, was_created = PhieuChamDiem.objects.update_or_create(
-                    thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
+                    thiSinh=thi_sinh, baiThi=bt, cuocThi=ct,
                     defaults=dict(
-                        cuocThi=ct,
                         vongThi=bt.vongThi,
                         diem=diem,
-                        thoiGian=seconds,   # ✅ lưu thời gian picker
+                        thoiGian=seconds,
+                        giamKhao=judge
                     )
                 )
                 created += int(was_created); updated += int(not was_created)

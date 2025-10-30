@@ -127,6 +127,17 @@
 
     .btn:active { transform: translateY(0); }
 
+    .tpl-open-btn {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;    
+      width: 156px;           
+      height: 44px;           
+      font-size: 0.85rem;
+      padding: 0;
+      text-align: center;
+    }
+
 
     /* === Glass Card (form + kết quả) === */
     .card {
@@ -553,7 +564,7 @@
           {% for block in structure %}
           {% for b in block.bai_list %}
           <tr>
-            <td>{{ b.ten }} <span class="muted">({{ b.code }})</span></td>
+            <td>{{ b.ten }}</td>
             <td>
               {% if b.type == "TIME" %}
               <label class="inline-flex items-center" style="gap:8px">
@@ -593,13 +604,14 @@
               </div>
 
               {% elif b.type == "TEMPLATE" %}
-              <button type="button" class="btn tpl-open-btn" data-btid="{{ b.id }}"
-                data-bcode="{{ b.code|escapejs }}">Chấm theo mẫu</button>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <button type="button" class="btn tpl-open-btn" data-btid="{{ b.id }}"
+                  data-bcode="{{ b.code|escapejs }}">Chấm theo mẫu</button>
 
 
-              <span id="preview-total-{{ b.id }}" class="muted">Chưa chấm</span>
-              <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" value="">
-
+                <span id="preview-total-{{ b.id }}" class="muted">Chưa chấm</span>
+                <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" value="">
+              </div>
               {% else %}
               <input class="score-input" type="number" min="0" max="{{ b.max }}" step="1" name="score_{{ b.id }}"
                 value="{% if b.current != None %}{{ b.current|floatformat:0 }}{% endif %}">

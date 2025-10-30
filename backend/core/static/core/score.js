@@ -435,14 +435,12 @@ function saveTplScores() {
             wrap.classList.remove('hidden');
             input.removeAttribute('disabled');
 
-            const maxVal = parseInt(wrap?.dataset?.max || '10', 10);
-
             // default: 00:00 + 10 điểm
             if (!hasSaved) {
               if (minCol) minCol.scrollTop = 0;
               if (secCol) secCol.scrollTop = 0;
               input.value = '00:00';
-              if (preview) preview.textContent = String(maxVal);
+              if (preview) preview.textContent = '10';
             }
             // focus vào cột phút cho UX
             if (minCol) minCol.focus?.();
@@ -460,22 +458,22 @@ function saveTplScores() {
     }
     // TIME preview by rules
     if (document.querySelector('.time-wrap')) {
-        document.querySelectorAll('.time-wrap').forEach(wrap => {
-            const rules = JSON.parse(wrap.dataset.rules || '[]');
-            const input = wrap.querySelector('.time-input');
-            const out = wrap.querySelector('.time-score');
-            if (!input || !out) return;
-            input.addEventListener('input', () => {
+      document.querySelectorAll('.time-wrap').forEach(wrap => {
+          const rules = JSON.parse(wrap.dataset.rules || '[]');
+          const input = wrap.querySelector('.time-input');
+          const out = wrap.querySelector('.time-score');
+          if (!input || !out) return;
+          input.addEventListener('input', () => {
             const sec = parseSeconds(input.value);
-            let score = 0;
+            let bonus = 0;
             if (sec !== null) {
                 for (const r of rules) {
-                if (sec >= r.s && sec <= r.e) { score = r.score; break; }
+                  if (sec >= r.s && sec <= r.e) { bonus = Number(r.bonus ?? r.score ?? 0); break; }
                 }
             }
-            out.textContent = score;
-            });
+            out.textContent = String(Math.min(20, 10 + bonus));
         });
+      });
     }
 
 
@@ -609,14 +607,14 @@ function initTimeWheels() {
     const secCol = wheel.querySelector('[data-type="sec"]');
     const input = wrap.querySelector('.time-input');
     const preview = wrap.querySelector('.time-score');
-    const max = parseFloat(wrap.dataset.max || 10);
+    const max = 20;
     const rules = JSON.parse(wrap.dataset.rules || "[]");
 
     // scroll to 00 mặc định
     minCol.scrollTop = 0;
     secCol.scrollTop = 0;
     input.value = "00:00";
-    preview.textContent = String(max);
+    preview.textContent = '10';
     
     // --- Prefill khi server đã trả time_current (giây) qua data-time ---
     const saved = wrap.dataset.time;
@@ -639,17 +637,16 @@ function initTimeWheels() {
 
       // dùng chính calcScore trong scope này
       const score = (function calcScorePrefill(totalSec){
-        if (!(Array.isArray(rules) && rules.length)) return max;
-        const hasRange = typeof rules[0].s !== 'undefined' && typeof rules[0].e !== 'undefined';
-        if (hasRange) {
-          for (const r of rules) if (totalSec >= r.s && totalSec <= r.e) return r.score;
-          return max;
-        } else {
-          for (const r of rules) if (totalSec <= r.max) return r.score;
-          return max;
+        if (!(Array.isArray(rules) && rules.length)) return 10;
+        let bonus = 0;
+        for (const r of rules) {
+          const inRange = (typeof r.s !== 'undefined' && typeof r.e !== 'undefined')
+            ? (totalSec >= r.s && totalSec <= r.e)
+            : (typeof r.max !== 'undefined' && totalSec <= r.max);
+          if (inRange) { bonus = Number(r.bonus ?? r.score ?? 0); break; }
         }
+        return Math.min(20, 10 + bonus);
       })(total);
-
       preview.textContent = String(score);
     }
 
@@ -714,21 +711,15 @@ function initTimeWheels() {
     }
 
     function calcScore(totalSec) {
-      if (!(Array.isArray(rules) && rules.length)) {
-        return max;
+      if (!(Array.isArray(rules) && rules.length)) return 10;
+      let bonus = 0;
+      for (const r of rules) {
+        const inRange = (typeof r.s !== 'undefined' && typeof r.e !== 'undefined')
+          ? (totalSec >= r.s && totalSec <= r.e)
+          : (typeof r.max !== 'undefined' && totalSec <= r.max);
+        if (inRange) { bonus = Number(r.bonus ?? r.score ?? 0); break; }
       }
-      const hasRange = typeof rules[0].s !== 'undefined' && typeof rules[0].e !== 'undefined';
-      if (hasRange) {
-        for (const r of rules) {
-          if (totalSec >= r.s && totalSec <= r.e) return r.score;
-        }
-        return max;
-      } else {
-        for (const r of rules) {
-          if (totalSec <= r.max) return r.score;
-        }
-        return max; // không match → lấy Max
-      }
+      return Math.min(20, 10 + bonus);
     }
 
     function update() {
