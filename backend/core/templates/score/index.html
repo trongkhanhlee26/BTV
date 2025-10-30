@@ -130,12 +130,14 @@
     .tpl-open-btn {
       display: inline-flex;
       justify-content: center;
-      align-items: center;    
-      width: 156px;           
-      height: 44px;           
+      align-items: center;             
+      height: var(--control-h);      
       font-size: 0.85rem;
-      padding: 0;
       text-align: center;
+      margin: 0;            
+      vertical-align: middle;   
+      width: 156px;      
+      flex-shrink: 0;    
     }
 
 
@@ -261,6 +263,7 @@
       padding: 8px 10px;
       -webkit-backdrop-filter: blur(8px);
       backdrop-filter: blur(8px);
+
     }
 
     /* toast trên nền kính (giữ màu green/red nhưng trong suốt) */
@@ -441,13 +444,22 @@
       background: linear-gradient(
         to bottom, 
         rgba(17,24,39,.65), 
-        transparent 25%, 
+        transparen
+        t 25%, 
         transparent 75%, 
         rgba(17,24,39,.65)
       );
       border-radius: 12px;
     }
-
+    #tplModal input[type="number"]{
+      background: rgba(30,41,59,.28);
+      color:#e5e7eb;
+      border:1px solid rgba(255,255,255,.18);
+      border-radius:12px;
+      padding:8px 10px;
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+    }
   </style>
 {% endblock %}
 
@@ -604,13 +616,14 @@
               </div>
 
               {% elif b.type == "TEMPLATE" %}
-              <div style="display:flex; align-items:center; gap:12px;">
-                <button type="button" class="btn tpl-open-btn" data-btid="{{ b.id }}"
-                  data-bcode="{{ b.code|escapejs }}">Chấm theo mẫu</button>
-
-
-                <span id="preview-total-{{ b.id }}" class="muted">Chưa chấm</span>
-                <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" value="">
+              <div style="display:flex; align-items:center; gap: 8px;">
+                <button type="button" class="btn tpl-open-btn"
+                        data-btid="{{ b.id }}" data-bcode="{{ b.code|escapejs }}">
+                  Chấm theo mẫu
+                </button>
+                <span id="preview-total-{{ b.id }}" class="ml-2 muted">Chưa chấm</span>
+                <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" data-max="{{ b.max }}" value="">
+                <input type="hidden" name="tpl_time_{{ b.id }}" id="tpl-time-{{ b.id }}" value="">
               </div>
               {% else %}
               <input class="score-input" type="number" min="0" max="{{ b.max }}" step="1" name="score_{{ b.id }}"
@@ -651,19 +664,16 @@
 
   <div id="toast" class="toast"></div>
   <!-- Modal chấm theo mẫu -->
-  <div id="tplModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:999;">
-    <div
-      style="background:#111827; color:#e5e7eb; width:min(900px,92vw); margin:5vh auto; padding:16px; border-radius:10px">
+  <div id="tplModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.58); -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); z-index:999;">
+    <div style="background:rgba(17,24,39,.42); color:#e5e7eb; width:min(900px,92vw); margin:5vh auto; padding:16px; border-radius:16px; border:1px solid rgba(255,255,255,.18); outline:1px solid rgba(255,255,255,.06); -webkit-backdrop-filter:blur(16px) saturate(120%); backdrop-filter:blur(16px) saturate(120%); box-shadow:0 16px 40px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06)">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
         <h3 id="tplTitle" style="margin:0">Chấm theo mẫu</h3>
         <button onclick="closeTplModal()">✕</button>
       </div>
-
-      <div id="tplBody" style="max-height:60vh; overflow:auto; border:1px solid #1f2937; padding:8px"></div>
-
+      <div id="tplBody" style="max-height:60vh; overflow:auto; border:1px solid rgba(255,255,255,.12); border-radius:12px; background:rgba(2,6,23,.18); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); box-shadow:inset 0 1px 0 rgba(255,255,255,.05); padding:8px"></div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px">
-        <div>
-          Tổng: <strong id="tplTotal">0</strong> / <span id="tplMax">0</span>
+
+        <div> Tổng: <strong id="tplTotal">0</strong> / <span id="tplMax">0</span>
           {% if selected_ts %}
             <span class="muted" style="margin-left:10px">
               Thí sinh: <b>{{ selected_ts.maNV }}</b> — {{ selected_ts.hoTen }}
@@ -675,12 +685,11 @@
           <input id="tplThiSinh"
                 type="hidden"
                 value="{% if selected_ts %}{{ selected_ts.maNV }}{% endif %}">
-          <button id="tplSaveBtn" onclick="saveTplScores()" {% if not selected_ts %}disabled title="Chọn thí sinh trước khi chấm theo mẫu"{% endif %}>
+          <button id="tplSaveBtn" class="btn" style="font-size: 0.9rem;" onclick="saveTplScores()" {% if not selected_ts %}disabled title="Chọn thí sinh trước khi chấm theo mẫu"{% endif %}>
             Lưu
           </button>
         </div>
       </div>
-
     </div>
   </div>
 

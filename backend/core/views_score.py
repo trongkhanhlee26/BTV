@@ -234,8 +234,7 @@ def score_view(request):
         scores  = payload.get("scores") or {}
         done    = payload.get("done")   or {}
         times   = payload.get("times")  or {}
-
-        
+        tpl_times = payload.get("tpl_times") or {}
 
         thi_sinh = ThiSinh.objects.filter(Q(maNV__iexact=ts_code) | Q(hoTen__iexact=ts_code)).first()
         if not thi_sinh:
@@ -318,9 +317,16 @@ def score_view(request):
                     errors.append(f"Bài {bt.ma}: 0..{maxp}.")
                     continue
 
+                extra = {}
+                if _is_template(bt):
+                    t = tpl_times.get(str(btid)) or tpl_times.get(btid)
+                    sec = _parse_seconds(t)
+                    if sec is not None and sec >= 0:
+                        extra["thoiGian"] = int(sec)
+
                 obj, was_created = PhieuChamDiem.objects.update_or_create(
                     thiSinh=thi_sinh, baiThi=bt, cuocThi=ct,
-                    defaults=dict(vongThi=bt.vongThi, diem=diem, giamKhao=judge)
+                    defaults=dict(vongThi=bt.vongThi, diem=diem, giamKhao=judge, **extra)
                 )
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
@@ -559,7 +565,7 @@ def score_template_api(request, btid: int):
 
     if request.method == "GET":
         try:
-            # kiểm tra loại bài là TEMPLATE
+            # kiểm tra loại bài là TEMPLATE 
             if not _is_template(bt):
                 return JsonResponse({"ok": False, "message": "Bài thi này không phải chấm theo mẫu."}, status=400)
 
@@ -660,7 +666,7 @@ def score_template_api(request, btid: int):
         for i in s.items.all():
             max_map[i.id] = int(i.max_score or 0)
 
-    # Chuẩn hóa & kẹp điểm trong khoảng 0..max
+    errors = []
     total = 0
     normalized = {}
     for raw_id, raw_val in item_scores.items():
@@ -673,17 +679,46 @@ def score_template_api(request, btid: int):
         try:
             val = int(float(raw_val))
         except Exception:
-            val = 0
-        val = max(0, min(val, max_map[iid]))
+            errors.append(f"Mục {iid}: điểm không hợp lệ.")
+            continue
+
+        max_allowed = max_map[iid]
+        if val < 0 or val > max_allowed:
+            errors.append(f"Mục {iid}: chỉ cho phép 0..{max_allowed}.")
+            continue
+
         normalized[iid] = val
         total += val
 
-    # Lưu tổng vào Phiếu chấm (chi tiết item nếu cần sẽ bổ sung model riêng sau)
+    if errors:
+        return JsonResponse({
+            "ok": False,
+            "message": "Có điểm không hợp lệ trong phiếu chấm theo mẫu.",
+            "errors": errors
+        }, status=400)
+
+
+    # 👇 parse "mm:ss" về giây, trước khi lưu
+    time_str = payload.get("time")
+    total_seconds = 0
+    if time_str and ":" in time_str:
+        try:
+            m, s = map(int, time_str.split(":"))
+            total_seconds = m * 60 + s
+        except ValueError:
+            total_seconds = 0
+
     with transaction.atomic():
         obj, created = PhieuChamDiem.objects.update_or_create(
             thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
-            defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=total)
+            defaults=dict(
+                cuocThi=ct,
+                vongThi=bt.vongThi,
+                diem=total,
+                thoiGian=total_seconds,  # 👈 lưu thời gian hoàn thành
+            )
         )
+
 
     return JsonResponse({
         "ok": True,
