@@ -1,4 +1,4 @@
-/* Build bảng, sticky cột trái, filter & sort (không còn phần xuất CSV phía client) */
+/* Build bảng, filter/sort, sticky 3 cột trái + AUTO-FIT WIDTH THEO NỘI DUNG */
 
 (function () {
   const columns = window.EXPORT_COLUMNS || [];
@@ -9,27 +9,27 @@
   const filter = document.getElementById('filter-row');
   const body = document.getElementById('body-rows');
   const table = document.getElementById('exportTable');
+    // ===== CẤU HÌNH WIDTH CỐ ĐỊNH CHO CỘT "BÀI THI" =====
+    const SCORE_COL_WIDTH = 100;   // px. Có thể chỉnh 96 / 110 tùy ý.
+    const SCORE_COL_MIN   = 90;    // px. Sàn để tránh hẹp quá.
+    const SCORE_COL_MAX   = 140;   // px. Trần nếu bạn muốn nới.
+    // Nhận diện cột "bài thi": tiêu đề có xuống dòng (Vòng...\nBài thi...)
+    // Nếu sau này bạn muốn chỉ định thủ công từ cột thứ N trở đi: đổi implement ở hàm isScoreCol.
+    const isScoreCol = (headerText, index) => {
+    return String(headerText || '').includes('\n');
+    };
 
-  const fmtHeader = (title) => {
-    // Hỗ trợ hiển thị "Vòng...\nBài thi..." thành 2 dòng
-    const s = (title ?? '').toString();
-    return s.replace(/\n/g, '<br>');
-  };
+  // --- Utilities ---
+  const fmtHeader = (title) => (title ?? '').toString().replace(/\n/g, '<br>');
 
   // --- Render header + filter ---
   columns.forEach((name, i) => {
     const th = document.createElement('th');
-    th.innerHTML = fmtHeader(name);        // đổi textContent -> innerHTML
+    th.innerHTML = fmtHeader(name);
     th.dataset.index = i;
-    th.classList.add('col-min');
-    if (i === 0) th.classList.add('col-stt');
-    if (i === 1) th.classList.add('col-id');
-    if (i === 2) th.classList.add('col-name');
-
     // sort
     th.style.cursor = 'pointer';
     th.addEventListener('click', () => toggleSort(i));
-
     head.appendChild(th);
 
     // filter inputs
@@ -52,14 +52,13 @@
       r.forEach((cell, i) => {
         const td = document.createElement('td');
         td.textContent = (cell === null || cell === undefined) ? '' : cell;
-        if (i === 0) td.classList.add('col-stt');
-        if (i === 1) td.classList.add('col-id');
-        if (i === 2) td.classList.add('col-name');
         tr.appendChild(td);
       });
       frag.appendChild(tr);
     });
     body.appendChild(frag);
+
+    autoFit();   // đo & set width mỗi lần render
     applySticky();
   }
   renderBody();
@@ -68,18 +67,12 @@
   function applyFilters() {
     const inputs = Array.from(filter.querySelectorAll('input'));
     const terms = inputs.map(ip => ip.value.trim().toLowerCase());
-    const filtered = rows.map((r, idx) => ({ r, _i: idx })).filter(({ r }) => {
-      return terms.every((q, i) => {
-        if (!q) return true;
-        const val = (r[i] ?? '').toString().toLowerCase();
-        return val.includes(q);
-      });
-    });
-    if (sortState.index !== null) {
-      filtered.sort(compare(sortState.index, sortState.dir));
-    }
-    renderBody(filtered);
+    const filtered = rows.map((r, idx) => ({ r, _i: idx })).filter(({ r }) =>
+      terms.every((q, i) => !q || (r[i] ?? '').toString().toLowerCase().includes(q))
+    );
+    if (sortState.index !== null) filtered.sort(compare(sortState.index, sortState.dir));
     viewRows = filtered;
+    renderBody(filtered);
   }
 
   // --- Sorting ---
@@ -91,7 +84,7 @@
     renderBody(viewRows);
     // UI cue
     Array.from(head.children).forEach((th, j) => {
-      const base = columns[j];
+      const base = columns[j] || '';
       th.innerHTML = fmtHeader(base + (j === sortState.index ? (sortState.dir === 1 ? ' ▲' : ' ▼') : ''));
     });
   }
@@ -101,9 +94,85 @@
       const na = parseFloat(va), nb = parseFloat(vb);
       const isNum = !isNaN(na) && !isNaN(nb);
       if (isNum) return (na - nb) * dir || (a._i - b._i);
-      return (va ?? '').toString().localeCompare((vb ?? '').toString(), 'vi', { numeric: true }) * dir || (a._i - b._i);
+      return (String(va ?? '')).localeCompare(String(vb ?? ''), 'vi', { numeric: true }) * dir || (a._i - b._i);
     };
   }
+
+  // --- Auto-fit width theo nội dung ---
+function autoFit() {
+  // Tạo/đảm bảo colgroup
+  let colgroup = table.querySelector('colgroup');
+  if (!colgroup) {
+    colgroup = document.createElement('colgroup');
+    for (let i = 0; i < columns.length; i++) colgroup.appendChild(document.createElement('col'));
+    table.insertBefore(colgroup, table.firstChild);
+  } else {
+    // sync số col
+    const diff = columns.length - colgroup.children.length;
+    if (diff > 0) for (let i = 0; i < diff; i++) colgroup.appendChild(document.createElement('col'));
+    if (diff < 0) for (let i = 0; i < -diff; i++) colgroup.lastElementChild.remove();
+  }
+
+  // Measurer
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Lấy style để biết font & padding
+  const anyTH = head.children[0];
+  const anyTD = body.querySelector('td');
+  const thStyle = anyTH ? getComputedStyle(anyTH) : null;
+  const tdStyle = anyTD ? getComputedStyle(anyTD) : null;
+
+  const thPadX = thStyle ? (parseFloat(thStyle.paddingLeft) + parseFloat(thStyle.paddingRight)) : 16;
+  const tdPadX = tdStyle ? (parseFloat(tdStyle.paddingLeft) + parseFloat(tdStyle.paddingRight)) : 16;
+
+  const thFont = thStyle ? `${thStyle.fontWeight} ${thStyle.fontSize} ${thStyle.fontFamily}` : '700 16px system-ui';
+  const tdFont = tdStyle ? `${tdStyle.fontWeight} ${tdStyle.fontSize} ${tdStyle.fontFamily}` : '400 14px system-ui';
+
+  const buffer = 18;           // đệm thêm cho dễ thở
+  const MAX_COL = 480;         // trần cho cột auto-fit
+  const MIN_DEFAULT = 60;      // sàn cho cột auto-fit
+
+  // Sàn riêng cho 3 cột trái (STT/Mã NV/Họ tên)
+  const minFor = (i) => (i === 0 ? 36 : i === 1 ? 70 : i === 2 ? 150 : MIN_DEFAULT);
+
+  for (let i = 0; i < columns.length; i++) {
+    const header = columns[i] ? String(columns[i]) : '';
+
+    // ===== Nếu là cột "BÀI THI": set cố định và bỏ đo =====
+    if (isScoreCol(header, i)) {
+      const fixed = Math.max(SCORE_COL_MIN, Math.min(SCORE_COL_MAX, SCORE_COL_WIDTH));
+      colgroup.children[i].style.width = `${fixed}px`;
+      continue;
+    }
+
+    // ===== Ngược lại (meta/info): auto-fit như cũ =====
+    let maxW = 0;
+
+    // đo header (2 dòng tách bằng \n)
+    const headerLines = header.split('\n');
+    ctx.font = thFont;
+    headerLines.forEach(line => {
+      const w = ctx.measureText(line).width;
+      if (w > maxW) maxW = w;
+    });
+    maxW += thPadX;
+
+    // đo body cells (giới hạn 200 hàng cho nhanh)
+    ctx.font = tdFont;
+    const limit = Math.min(viewRows.length, 200);
+    for (let r = 0; r < limit; r++) {
+      const val = viewRows[r].r[i];
+      const text = (val === null || val === undefined) ? '' : String(val);
+      const w = ctx.measureText(text).width + tdPadX;
+      if (w > maxW) maxW = w;
+    }
+
+    const final = Math.max(minFor(i), Math.min(MAX_COL, Math.ceil(maxW + buffer)));
+    colgroup.children[i].style.width = `${final}px`;
+  }
+}
+
 
   // --- Sticky frozen columns (3 cột trái) ---
   function applySticky() {
@@ -112,6 +181,7 @@
       el.style.left = '';
     });
 
+    // Sau autoFit(), đã có colgroup width → đo lại
     const colWidths = [];
     Array.from(head.children).forEach((th, i) => {
       colWidths[i] = th.getBoundingClientRect().width;
@@ -136,6 +206,10 @@
     applyForRow(filter);
     body.querySelectorAll('tr').forEach(applyForRow);
   }
-  window.addEventListener('resize', applySticky);
-  new ResizeObserver(applySticky).observe(table);
+
+  // Re-calc khi resize/zoom
+  window.addEventListener('resize', () => { autoFit(); applySticky(); });
+
+  // fonts có thể load chậm → đo lại sau một vòng frame
+  requestAnimationFrame(() => { autoFit(); applySticky(); });
 })();
