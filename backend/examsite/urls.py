@@ -22,7 +22,7 @@ from core.views_organize import organize_view, competition_list_view
 from core.views_score import score_view
 from core.views_ranking import ranking_view
 from core.views_management import management_view
-from core.views_export import export_page, export_csv, export_xlsx
+from core.views_export import export_page, export_xlsx
 from django.urls import path
 from core import views_score
 
@@ -41,6 +41,5 @@ urlpatterns = [\
     path("management/", management_view, name="management"),
     path("score/template/<int:btid>/", views_score.score_template_api, name="score_template_api"),
     path("export", export_page, name="export-page"),     # trang bảng “Excel-like”
-    path("export.csv", export_csv, name="export-csv"),   # tải CSV (Excel mở được)
     path("export-xlsx", export_xlsx, name="export-xlsx"),
 ]
