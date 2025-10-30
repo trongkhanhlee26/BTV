@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Export cuộc thi | ExamSite{% endblock %}
+
+{% block head_extra %}
+<style>
+/* ==== Khung bảng (white theme, không glass) ==== */
+.excel-wrap{
+  overflow:auto;
+  border-radius:16px;
+  background:#ffffff;                 /* trắng toàn phần */
+  border:1px solid rgba(0,0,0,.08);
+  box-shadow:0 10px 30px rgba(0,0,0,.08);
+}
+
+/* Bảng */
+table.export-table{
+  border-collapse:separate; border-spacing:0;
+  table-layout:fixed; white-space:nowrap;
+  width:max-content; min-width:100%;
+  color:#0f172a;
+}
+
+/* Header (2 hàng) — tăng chiều cao */
+.export-table thead th{
+  position:sticky; top:0; z-index:7;
+  background:#ffffff;                 /* header trắng */
+  font-weight:700;
+  padding:14px 12px;                  /* trước đây thấp -> tăng */
+  line-height:1.2;
+  border-bottom:1px solid rgba(0,0,0,.10);
+}
+.filter-row th{
+  top:48px; z-index:6;                /* đẩy hàng filter xuống đúng vị trí */
+  background:#ffffff;
+  padding:10px 12px;
+  border-bottom:1px solid rgba(0,0,0,.08);
+}
+.filter-row input{
+  width:100%; padding:8px 10px; border-radius:10px;
+  border:1px solid rgba(15,23,42,.18);
+  background:#ffffff; color:#0f172a;
+}
+
+/* Body cells — trắng, viền nhẹ */
+.export-table td{
+  padding:12px;                       /* nhỉnh hơn chút cho thoáng */
+  border-bottom:1px solid rgba(0,0,0,.06);
+  background:#ffffff;
+}
+.export-table tbody tr:hover td{
+  background:#f8fafc;                 /* hover xám rất nhẹ */
+}
+
+/* Nền tảng z-index */
+.export-table { position: relative; }
+.export-table td, .export-table th { position: relative; z-index:1; }
+
+/* ===== 3 cột trái cố định (theo CLASS do export.js gán) =====
+   - col1: .sticky-col
+   - col2: .sticky-col .sticky-col-1
+   - col3: .sticky-col .sticky-col-2 .sticky-shadow
+*/
+.sticky-col{
+  position:sticky;
+  z-index:8;                          /* đè lên phần còn lại */
+  background:#ffffff;                 /* trắng đặc, không blur */
+}
+.sticky-col      { left:0; }
+.sticky-col-1    { left:var(--col-left-1, 0px); }
+.sticky-col-2    { left:var(--col-left-2, 0px); }
+.sticky-shadow   { box-shadow:6px 0 10px -6px rgba(0,0,0,.18); }
+
+/* Hover vẫn hòa với theme trắng */
+.export-table tbody tr:hover td.sticky-col,
+.export-table tbody tr:hover td.sticky-col-1,
+.export-table tbody tr:hover td.sticky-col-2{
+  background:#f8fafc;
+}
+
+/* Độ rộng một số cột */
+.col-stt{min-width:48px; width:48px; text-align:right}
+.col-id{min-width:110px}
+.col-name{min-width:220px}
+.col-min{min-width:140px}
+
+/* Nút */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 12px;border-radius:10px;
+  border:1px solid rgba(0,0,0,.08);
+  background:#2563eb;color:#fff;text-decoration:none
+}
+.btn.secondary{background:#10b981}
+</style>
+
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-[1500px] px-3 lg:px-6 mt-6">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl font-bold">Export cuộc thi: {{ contest.tenCuocThi }} ({{ contest.ma }})</h1>
+    <div class="flex gap-2">
+      <a class="btn secondary" href="{% url 'export-csv' %}?ct={{ contest.id }}">Tải CSV</a>
+      <a class="btn" href="{% url 'export-xlsx' %}?ct={{ contest.id }}">Tải XLSX</a>
+    </div>
+  </div>
+
+  {# dữ liệu cho JS #}
+  {{ columns|json_script:"export-columns" }}
+  {{ rows|json_script:"export-rows" }}
+  <script>
+    window.EXPORT_COLUMNS = JSON.parse(document.getElementById("export-columns").textContent || "[]");
+    window.EXPORT_ROWS    = JSON.parse(document.getElementById("export-rows").textContent || "[]");
+    window.FROZEN_COUNT   = 3;
+    console.log("[Export] cols:", window.EXPORT_COLUMNS.length, window.EXPORT_COLUMNS);
+    console.log("[Export] rows:", window.EXPORT_ROWS.length);
+  </script>
+
+  <!-- Bảng Excel-like -->
+  <div class="excel-wrap mt-4">
+    <table id="exportTable" class="export-table">
+      <thead>
+        <tr id="head-row"></tr>
+        <tr id="filter-row" class="filter-row"></tr>
+      </thead>
+      <tbody id="body-rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- load JS dựng bảng -->
+<script src="{% static 'core/export.js' %}?v={% now 'U' %}"></script>
+{% endblock %}
+hãy hướng dẫn sửa đi
