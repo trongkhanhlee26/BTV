@@ -4,9 +4,9 @@ from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db import transaction
-from django.db.models import Avg, Q
+from django.db.models import Avg, Q, Max
 from core.decorators import judge_required
-from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi
+from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi, BaiThiTemplateItem,BaiThiTemplateSection
 import json
 
 def _pick_competition(preferred_id: int | None):
@@ -29,19 +29,41 @@ def _pick_competition(preferred_id: int | None):
     return fallback
 def _session_judge(request):
     """Lấy giám khảo từ session (ưu tiên)."""
-    jid = request.session.get("judge_id")
+    jid = request.session.get("judge_pk") or request.session.get("judge_id")
     if jid:
-        return GiamKhao.objects.filter(id=jid).first()
+        return GiamKhao.objects.filter(pk=jid).first()
     return None
 
 def _current_judge(request):
-    user = getattr(request, "user", None)
-    if user and getattr(user, "email", None):
-        gk = GiamKhao.objects.filter(email__iexact=user.email).first()
-        if gk:
-            return gk
+    """
+    Lấy giám khảo đang đăng nhập để ghi vào phiếu.
+    - Ưu tiên lấy từ session: request.session['judge_id'].
+    - Nếu không có session, chỉ THỬ khớp tài khoản hiện tại với GiamKhao đã tồn tại
+      (email hoặc username). Tuyệt đối KHÔNG tự tạo mới.
+    - Nếu vẫn không có -> trả None để view báo 401.
+    """
+    # 1) Ưu tiên giám khảo đang chọn trong session
     gk = _session_judge(request)
-    return gk or GiamKhao.objects.first()
+    if gk:
+        return gk
+
+    # 2) Thử map từ user hiện tại sang GiamKhao có sẵn (không tạo mới)
+    user = getattr(request, "user", None)
+    if user and getattr(user, "is_authenticated", False):
+        email = (getattr(user, "email", "") or "").strip()
+        username = (getattr(user, "username", "") or "").strip()
+
+        if email:
+            gk = GiamKhao.objects.filter(email__iexact=email).first()
+            if gk:
+                return gk
+        if username:
+            gk = GiamKhao.objects.filter(maNV__iexact=username).first()
+            if gk:
+                return gk
+
+    # 3) Không tìm thấy -> để view xử lý (401)
+    return None
 
 
 def _active_competition():
@@ -81,6 +103,8 @@ def _load_form_data(selected_ts, ct, request):
         score_map.update(score_map_avg)
         score_map.update(score_map_gk)
 
+        time_map = {p.baiThi_id: getattr(p, "thoiGian", 0) for p in qs}
+
     for vt in vongs:
         bais = []
         
@@ -92,7 +116,7 @@ def _load_form_data(selected_ts, ct, request):
         ):
             if _is_time(bt):
                 rules = list(bt.time_rules.all()) if hasattr(bt, "time_rules") else []
-                this_max = max([r.score for r in rules], default=0)
+                this_max = 20
                 b_type = "TIME"
                 rules_payload = [{"s": r.start_seconds, "e": r.end_seconds, "score": r.score} for r in rules]
                 rules_json = json.dumps(rules_payload, ensure_ascii=False)
@@ -122,6 +146,7 @@ def _load_form_data(selected_ts, ct, request):
                 "type": b_type,
                 "rules": rules_json,
                 "current": score_map.get(bt.id, 0.0) if selected_ts else None,
+                "time_current": (time_map.get(bt.id) if selected_ts and _is_time(bt) else None),
             })
         bai_by_vong.append({"vong": vt, "bai_list": bais})
 
@@ -210,6 +235,8 @@ def score_view(request):
         done    = payload.get("done")   or {}
         times   = payload.get("times")  or {}
 
+        
+
         thi_sinh = ThiSinh.objects.filter(Q(maNV__iexact=ts_code) | Q(hoTen__iexact=ts_code)).first()
         if not thi_sinh:
             return JsonResponse({"ok": False, "message": "Không tìm thấy thí sinh."}, status=400)
@@ -257,7 +284,7 @@ def score_view(request):
 
         if incoming_ids:
             existed_qs = PhieuChamDiem.objects.filter(
-                thiSinh=thi_sinh, baiThi_id__in=list(incoming_ids)
+                thiSinh=thi_sinh, cuocThi=ct, baiThi_id__in=list(incoming_ids)
             ).values_list("baiThi__ma", flat=True)
             existed_codes = list(existed_qs)
 
@@ -292,44 +319,68 @@ def score_view(request):
                     continue
 
                 obj, was_created = PhieuChamDiem.objects.update_or_create(
-                    thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
-                    defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=diem)
+                    thiSinh=thi_sinh, baiThi=bt, cuocThi=ct,
+                    defaults=dict(vongThi=bt.vongThi, diem=diem, giamKhao=judge)
                 )
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
 
-            # 2) TIME
+            # 2) TIME (chuẩn hóa theo yêu cầu)
             for bt in bai_qs:
                 if not _is_time(bt):
                     continue
                 btid = bt.id
+                has_input = (
+                    str(btid) in (done or {}) or btid in (done or {}) or
+                    str(btid) in (times or {}) or btid in (times or {})
+                )
+                if not has_input:
+                    continue
                 is_done = bool(done.get(str(btid)) or done.get(btid))
+
                 if not is_done:
-                    # Không hoàn thành → 0 điểm
                     obj, was_created = PhieuChamDiem.objects.update_or_create(
-                        thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
-                        defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=0)
+                        thiSinh=thi_sinh, baiThi=bt, cuocThi=ct,
+                        defaults=dict(
+                            vongThi=bt.vongThi,
+                            diem=0,
+                            thoiGian=0,
+                            giamKhao=judge
+                        )
                     )
                     created += int(was_created); updated += int(not was_created)
                     saved_scores[btid] = 0
                     continue
 
-                seconds = _parse_seconds(times.get(str(btid)) or times.get(btid))
+                # ĐANG TICK → LƯU thời gian + điểm
+                # Cho phép "00:00" (seconds = 0) là hợp lệ
+                raw_t = times.get(str(btid)) or times.get(btid)
+                seconds = _parse_seconds(raw_t)
                 if seconds is None or seconds < 0:
                     errors.append(f"Bài {bt.ma}: thời gian không hợp lệ (mm:ss hoặc giây).")
-                    # Không lưu khi tick nhưng thời gian sai
                     continue
 
-                # map thời gian → điểm theo rule
-                match = None
+                try:
+                    seconds = int(seconds or 0)
+                except Exception:
+                    seconds = 0
+
+                # bonus theo rule; không match thì bonus = 0
+                bonus = 0
                 for r in bt.time_rules.all():
                     if r.start_seconds <= seconds <= r.end_seconds:
-                        match = r; break
-                diem = int(getattr(match, "score", 0))
+                        bonus = int(r.score)
+                        break
+                diem = min(20, 10 + bonus)   # tổng = 10 + bonus (kẹp 20)
 
                 obj, was_created = PhieuChamDiem.objects.update_or_create(
-                    thiSinh=thi_sinh, giamKhao=judge, baiThi=bt,
-                    defaults=dict(cuocThi=ct, vongThi=bt.vongThi, diem=diem)
+                    thiSinh=thi_sinh, baiThi=bt, cuocThi=ct,
+                    defaults=dict(
+                        vongThi=bt.vongThi,
+                        diem=diem,
+                        thoiGian=seconds,
+                        giamKhao=judge
+                    )
                 )
                 created += int(was_created); updated += int(not was_created)
                 saved_scores[btid] = diem
@@ -475,9 +526,6 @@ def score_view(request):
                         )
         return JsonResponse(data)
 
-
-
-
     return render(request, "score/index.html", {
         "ct": ct,
         "selected_ct_id": int(ct_param) if ct_param else None,
@@ -496,6 +544,8 @@ def score_view(request):
         "tests": tests,
         "selected_vt_id": selected_vt.id if selected_vt else None,
         "selected_bt_id": selected_bt.id if selected_bt else None,
+
+        "range60": range(60),
     })
 
 
@@ -521,7 +571,6 @@ def score_template_api(request, btid: int):
                 sec_qs = bt.template_sections.all().order_by("stt", "id")
             except Exception:
                 try:
-                    from .models import BaiThiTemplateSection
                     sec_qs = BaiThiTemplateSection.objects.filter(baiThi=bt).order_by("stt", "id")
                 except Exception:
                     return JsonResponse({"ok": False, "message": "Không tìm thấy quan hệ sections cho bài thi này."}, status=500)
@@ -532,7 +581,7 @@ def score_template_api(request, btid: int):
                     item_qs = s.items.all().order_by("stt", "id")
                 except Exception:
                     try:
-                        from .models import BaiThiTemplateItem
+
                         item_qs = BaiThiTemplateItem.objects.filter(section=s).order_by("stt", "id")
                     except Exception:
                         return JsonResponse({"ok": False, "message": f"Không tìm thấy items cho section {getattr(s,'id','?')}."}, status=500)

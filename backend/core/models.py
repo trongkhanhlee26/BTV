@@ -149,6 +149,7 @@ class PhieuChamDiem(models.Model):
     vongThi = models.ForeignKey(VongThi, on_delete=models.CASCADE)
     baiThi = models.ForeignKey(BaiThi, on_delete=models.CASCADE)
     diem = models.IntegerField(validators=[MinValueValidator(0)])
+    thoiGian = models.PositiveIntegerField(default = 0, help_text="Thời gian (giây)")
     updated_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

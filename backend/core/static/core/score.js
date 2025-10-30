@@ -23,6 +23,7 @@ function confirmDialog(message, title = 'Xác nhận') {
     const titleEl = document.getElementById('confirmTitle');
     const okBtn   = document.getElementById('confirmOk');
     const cancelBtn = document.getElementById('confirmCancel');
+    
 
     if (!overlay || !msgEl || !okBtn || !cancelBtn) {
       // fallback nếu thiếu markup
@@ -216,6 +217,7 @@ function saveTplScores() {
             if (pv) pv.textContent = `Tổng: ${total}`;
             if (hidden) hidden.value = total;
             closeTplModal();
+            
         })
         .catch(err => alert(err.message));
 }
@@ -311,7 +313,6 @@ function saveTplScores() {
         e.preventDefault();
         showHint('Vui lòng nhập <b>Mã NV</b> hoặc <b>họ tên</b> để tìm thí sinh.');
         input.focus();
-
          const scoreCard = document.getElementById('scoreCard');
          if (scoreCard) scoreCard.style.display = 'none';
         return;
@@ -414,50 +415,65 @@ function saveTplScores() {
     });
 
 
-    // Toggle TIME enable/disable input
+    // Toggle TIME enable/disable input (show wheel & default 00:00 + 10đ)
     if (document.querySelector('.done-toggle')) {
-        document.querySelectorAll('.done-toggle').forEach(cb => {
-            const id = cb.dataset.btid;
-            const wrap = document.querySelector(`.time-wrap[data-btid="${id}"]`);
-            const input = wrap ? wrap.querySelector('.time-input') : null;
-            const pv = document.getElementById(`preview_${id}`);
-            const update = () => {
-            if (!wrap || !input) return;
-            if (cb.checked) {
-                wrap.classList.remove('hidden');
-                input.removeAttribute('disabled');
-                input.focus();
-            } else {
-                wrap.classList.add('hidden');
-                input.setAttribute('disabled', 'disabled');
-                input.value = '';
-                if (pv) pv.textContent = '0';
+      document.querySelectorAll('.done-toggle').forEach(cb => {
+        const id   = cb.dataset.btid;
+        const wrap = document.querySelector(`.time-wrap[data-btid="${id}"]`);
+        const input   = wrap ? wrap.querySelector('.time-input')  : null;
+        const preview = wrap ? wrap.querySelector('.time-score')  : null;
+        const wheel   = wrap ? wrap.querySelector('.wheel')       : null;
+        const minCol  = wheel ? wheel.querySelector('[data-type="min"]') : null;
+        const secCol  = wheel ? wheel.querySelector('[data-type="sec"]') : null;
+
+        const hasSaved = !!(wrap && wrap.dataset && wrap.dataset.time && wrap.dataset.time !== "");
+        if (hasSaved) cb.checked = true;
+
+        const update = () => {
+          if (!wrap || !input) return;
+          if (cb.checked) {
+            wrap.classList.remove('hidden');
+            input.removeAttribute('disabled');
+
+            // default: 00:00 + 10 điểm
+            if (!hasSaved) {
+              if (minCol) minCol.scrollTop = 0;
+              if (secCol) secCol.scrollTop = 0;
+              input.value = '00:00';
+              if (preview) preview.textContent = '10';
             }
-            };
-            cb.addEventListener('change', update);
-            update();
-        });
+            // focus vào cột phút cho UX
+            if (minCol) minCol.focus?.();
+          } else {
+            wrap.classList.add('hidden');
+            input.setAttribute('disabled', 'disabled');
+            input.value = '';
+            if (preview) preview.textContent = '0';
+          }
+        };
+
+        cb.addEventListener('change', update);
+        update();
+      });
     }
-
-
     // TIME preview by rules
     if (document.querySelector('.time-wrap')) {
-        document.querySelectorAll('.time-wrap').forEach(wrap => {
-            const rules = JSON.parse(wrap.dataset.rules || '[]');
-            const input = wrap.querySelector('.time-input');
-            const out = wrap.querySelector('.time-score');
-            if (!input || !out) return;
-            input.addEventListener('input', () => {
+      document.querySelectorAll('.time-wrap').forEach(wrap => {
+          const rules = JSON.parse(wrap.dataset.rules || '[]');
+          const input = wrap.querySelector('.time-input');
+          const out = wrap.querySelector('.time-score');
+          if (!input || !out) return;
+          input.addEventListener('input', () => {
             const sec = parseSeconds(input.value);
-            let score = 0;
+            let bonus = 0;
             if (sec !== null) {
                 for (const r of rules) {
-                if (sec >= r.s && sec <= r.e) { score = r.score; break; }
+                  if (sec >= r.s && sec <= r.e) { bonus = Number(r.bonus ?? r.score ?? 0); break; }
                 }
             }
-            out.textContent = score;
-            });
+            out.textContent = String(Math.min(20, 10 + bonus));
         });
+      });
     }
 
 
@@ -466,7 +482,7 @@ function saveTplScores() {
         saveBtn.addEventListener('click', async function () {
             const payload = {
             thiSinh: saveBtn.dataset.ts || '',
-            ct_id: saveBtn.dataset.ct || null,
+            ct_id: document.querySelector('[name="ct"]')?.value || saveBtn.dataset.ct || null,
             scores: {}, done: {}, times: {}
             };
 
@@ -560,12 +576,189 @@ function saveTplScores() {
             });
 
             showToast(data.message || 'Đã lưu.');
+            setTimeout(() => {
+              const ct = (saveBtn?.dataset.ct || '').trim();
+              const vt = document.getElementById('vtSelect')?.value || '';
+              const bt = document.getElementById('btSelect')?.value || '';
 
+              const params = new URLSearchParams();
+              if (ct) params.set('ct', ct);
+              if (vt) params.set('vt', vt);
+              if (bt) params.set('bt', bt);
+
+              const url = params.toString() ? `/score/?${params}` : '/score/';
+              window.location.href = url;
+            }, 800);
             } catch (e) {
             console.error(e);
             showToast('Không thể kết nối server.', true);
             }
         });
     }
-
+  initTimeWheels();
 })();
+
+// === Wheel Picker 2-column (phút / giây) ===
+function initTimeWheels() {
+  document.querySelectorAll('.time-wrap').forEach((wrap) => {
+    const wheel = wrap.querySelector('.wheel');
+    if (!wheel) return;
+    const minCol = wheel.querySelector('[data-type="min"]');
+    const secCol = wheel.querySelector('[data-type="sec"]');
+    const input = wrap.querySelector('.time-input');
+    const preview = wrap.querySelector('.time-score');
+    const max = 20;
+    const rules = JSON.parse(wrap.dataset.rules || "[]");
+
+    // scroll to 00 mặc định
+    minCol.scrollTop = 0;
+    secCol.scrollTop = 0;
+    input.value = "00:00";
+    preview.textContent = '10';
+    
+    // --- Prefill khi server đã trả time_current (giây) qua data-time ---
+    const saved = wrap.dataset.time;
+    if (saved !== undefined && saved !== null && saved !== "") {
+      const total = parseInt(saved, 10);
+      const mm = Math.floor(total / 60) % 60;
+      const ss = total % 60;
+
+      // mở picker (phòng khi checkbox chưa tick vì race)
+      wrap.classList.remove('hidden');
+
+      // cuộn tới đúng phút/giây
+      const ITEM_H = 44, SPACER = 1;
+      const scrollTo = (col, idx) => col && col.scrollTo({ top: (SPACER + idx) * ITEM_H, behavior: 'auto' });
+      scrollTo(minCol, mm - 1);
+      scrollTo(secCol, ss - 1);
+
+      // set input + preview theo rules
+      input.value = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+
+      // dùng chính calcScore trong scope này
+      const score = (function calcScorePrefill(totalSec){
+        if (!(Array.isArray(rules) && rules.length)) return 10;
+        let bonus = 0;
+        for (const r of rules) {
+          const inRange = (typeof r.s !== 'undefined' && typeof r.e !== 'undefined')
+            ? (totalSec >= r.s && totalSec <= r.e)
+            : (typeof r.max !== 'undefined' && totalSec <= r.max);
+          if (inRange) { bonus = Number(r.bonus ?? r.score ?? 0); break; }
+        }
+        return Math.min(20, 10 + bonus);
+      })(total);
+      preview.textContent = String(score);
+    }
+
+    const ITEM_H = 44;             // chiều cao 1 dòng
+    const SPACER = 1;              // số spacer đầu (1 item)
+    const MAX_IDX = 59;
+
+    function getIndex(col) {
+      // do có 1 spacer đầu, index thực tế = round(scrollTop/ITEM_H)
+      let idx = Math.round(col.scrollTop / ITEM_H);
+      if (idx < 0) idx = 0;
+      if (idx > MAX_IDX) idx = MAX_IDX;
+      return idx;
+    }
+    function getValue(col) {
+      const idx = getIndex(col);
+      return idx.toString().padStart(2, "0");
+    }
+    function scrollToIndex(col, idx, smooth = true) {
+      idx = Math.max(0, Math.min(MAX_IDX, idx));
+      col.scrollTo({ top: idx * ITEM_H, behavior: smooth ? "smooth" : "auto" });
+    }
+
+    let dragging = false; 
+
+    function addDrag(col) {
+      let startY = 0, startTop = 0;
+
+      const getY = (e) => (e.touches?.[0]?.clientY ?? e.clientY ?? 0);
+
+      const onDown = (e) => {
+        // Chỉ bật drag tùy theo loại con trỏ:
+        if (e.pointerType && e.pointerType !== 'mouse') return; // giữ cuộn tự nhiên trên touch
+        dragging = true;
+        startY = getY(e);
+        startTop = col.scrollTop;
+        col.classList.add('dragging');
+        col.setPointerCapture?.(e.pointerId);
+        e.preventDefault();
+      };
+
+      const onMove = (e) => {
+        if (!dragging) return;
+        const dy = startY - getY(e);
+        col.scrollTop = startTop + dy;
+      };
+
+      const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        col.classList.remove('dragging');
+        const idx = getIndex(col);
+        scrollToIndex(col, idx);   // snap vào rãnh
+        update();
+      };
+
+      col.addEventListener('pointerdown', onDown);
+      col.addEventListener('pointermove', onMove);
+      col.addEventListener('pointerup', onUp);
+      col.addEventListener('pointercancel', onUp);
+      col.addEventListener('mouseleave', onUp);
+    }
+
+    function calcScore(totalSec) {
+      if (!(Array.isArray(rules) && rules.length)) return 10;
+      let bonus = 0;
+      for (const r of rules) {
+        const inRange = (typeof r.s !== 'undefined' && typeof r.e !== 'undefined')
+          ? (totalSec >= r.s && totalSec <= r.e)
+          : (typeof r.max !== 'undefined' && totalSec <= r.max);
+        if (inRange) { bonus = Number(r.bonus ?? r.score ?? 0); break; }
+      }
+      return Math.min(20, 10 + bonus);
+    }
+
+    function update() {
+      const mm = getValue(minCol);
+      const ss = getValue(secCol);
+      input.value = `${mm}:${ss}`;
+      const total = parseInt(mm) * 60 + parseInt(ss);
+      const score = calcScore(total);
+      preview.textContent = score;
+    }
+
+    // cập nhật khi ngừng scroll (snap & update)
+    [minCol, secCol].forEach((col) => {
+      let timer;
+      col.addEventListener("scroll", () => {
+        addDrag(col);
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          // snap đúng rãnh
+          const idx = getIndex(col);
+          scrollToIndex(col, idx);
+          update();
+        }, 120);
+      });
+
+      // click vào 1 số -> nhảy ngay
+      col.addEventListener("click", (e) => {
+        if (dragging) return;
+        const li = e.target.closest(".wheel-item");
+        if (!li || li.classList.contains("wheel-spacer")) return;
+        const list = col.querySelector(".wheel-list");
+        const all  = Array.from(list.children);
+        const rawIndex = all.indexOf(li);   // có spacer đầu
+        const idx = Math.max(0, Math.min(MAX_IDX, rawIndex - SPACER));
+        scrollToIndex(col, idx);
+        // update ngay sau khi snap
+        setTimeout(update, 160);
+      });
+    });
+  });
+}
+
