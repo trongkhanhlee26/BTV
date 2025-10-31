@@ -14,7 +14,12 @@ WORKDIR /app
 
 # Requirements
 COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+
+COPY . /app/
+
+RUN python manage.py collectstatic --noinput
 
 # Default: keep container alive until we mount code & run command from compose
-CMD ["bash", "-lc", "sleep infinity"]
+# CMD ["bash", "-lc", "sleep infinity"]
+CMD ["bash", "-lc", "python manage.py migrate --noinput && gunicorn examsite.wsgi:application --bind 0.0.0.0:${PORT:-8000}"]
