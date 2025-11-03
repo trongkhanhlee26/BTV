@@ -122,6 +122,19 @@ def _read_csv(file, expected_cols):
 @judge_required
 @staff_member_required
 def import_view(request):
+    preselected_ma = None
+    q = request.GET.get("ct") or request.POST.get("maCT")  # cả GET & POST
+    if q:
+        # nếu q là mã (CT001...)
+        if CuocThi.objects.filter(ma=q).exists():
+            preselected_ma = q
+        else:
+            # nếu q là id số -> chuyển sang mã
+            try:
+                obj = CuocThi.objects.only("ma").get(pk=int(q))
+                preselected_ma = obj.ma
+            except Exception:
+                pass
     if request.method == "POST":
         target = request.POST.get("target")  # thisinh | giamkhao
         selected_ma_ct = request.POST.get("maCT")  # NEW
@@ -199,10 +212,15 @@ def import_view(request):
         messages.success(request, f"Import xong: thêm {created}, cập nhật {updated}, bỏ qua {skipped}.")
         return redirect(request.path)
 
+
     return render(
-    request,
-    "importer/index.html",
-    {"cuocthi_list": CuocThi.objects.all().values("ma", "tenCuocThi").order_by("ma")}
+        request,
+        "importer/index.html",
+        {
+            "cuocthi_list": CuocThi.objects.all().values("ma", "tenCuocThi").order_by("ma"),
+            "preselected_ma": preselected_ma,
+        }
+        
 )
 
 
