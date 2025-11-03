@@ -16,7 +16,7 @@ WORKDIR /app
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip && pip install -r /app/requirements.txt
 
-COPY backend/ /app/
+COPY . /app/
 
 RUN python backend/manage.py collectstatic --noinput
 
