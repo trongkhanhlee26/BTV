@@ -44,6 +44,10 @@
     let rowPage = 0;   // trang người
     let colGroup = 0;  // nhóm cột bài thi
 
+    // === Thêm: số bước cần để hoàn thành 1 vòng đầy đủ ===
+    const totalStepsPerCycle = Math.max(1, totalRowPages * totalColGroups);
+    let stepsLeftToReset = totalStepsPerCycle;
+
     function applyColumnVisibility(){
       const showIdx = new Set([ ...fixedIdxSet, ...colGroups[colGroup] ]);
       // Header
@@ -76,6 +80,15 @@
         colGroup = 0;
         rowPage = (rowPage + 1) % totalRowPages;
       }
+
+      // === Thêm: đếm cho auto reset ===
+      stepsLeftToReset--;
+      if(stepsLeftToReset <= 0){
+        // Reset 1 lần để cập nhật điểm mới
+        window.location.reload();
+        return; // đề phòng chạy tiếp trong tick hiện tại
+      }
+
       showRowPage();
     }
 

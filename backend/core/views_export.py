@@ -55,7 +55,8 @@ def _build_columns(ct: CuocThi):
 def _flatten(ct: CuocThi):
     cols_meta, score_titles = _build_columns(ct)
     info_titles = ['Đơn vị', 'Chi nhánh', 'Vùng', 'Nhóm', 'Email']
-    columns = ['STT', 'Mã NV', 'Họ tên'] + info_titles + score_titles[3:]
+    # Thêm nhãn "Tổng" ở cuối
+    columns = ['STT', 'Mã NV', 'Họ tên'] + info_titles + score_titles[3:] + ['Tổng']
 
     scores = (
         PhieuChamDiem.objects
@@ -65,7 +66,7 @@ def _flatten(ct: CuocThi):
     )
     score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in scores}
 
-    ts_qs = (ThiSinh.objects.filter(cuocThi=ct).order_by("maNV").distinct())
+    ts_qs = ThiSinh.objects.filter(cuocThi=ct).order_by("maNV").distinct()
     def _sv(x): return "" if x is None else str(x)
 
     rows = []
@@ -80,10 +81,18 @@ def _flatten(ct: CuocThi):
             _sv(getattr(ts, "nhom", "")),
             _sv(getattr(ts, "email", "")),
         ]
+        # cộng điểm theo từng bài
+        total = 0.0
         for c in cols_meta:
-            row.append(score_map.get((ts.maNV, c["id"]), ""))
+            val = score_map.get((ts.maNV, c["id"]), "")
+            row.append(val)
+            if isinstance(val, (int, float)):
+                total += float(val)
+        # đẩy "Tổng" vào cuối hàng
+        row.append(total)
         rows.append(row)
     return columns, rows
+
 
 # (Giữ export_page như cũ)
 
@@ -113,9 +122,15 @@ def export_xlsx(request):
             columns, rows = _flatten(ct)
             kinds = ["info"] * len(columns)
     else:
-        # GET: xuất full như cũ
         columns, rows = _flatten(ct)
+        # Tự tính kinds: 3 cột đầu (STT/Mã NV/Họ tên) + 5 cột info tiếp theo = info
+        # Các cột điểm là từ sau 8 cột info đến cột "Tổng" (cuối)
+        info_count = 3 + 5  # STT, Mã NV, Họ tên + (Đơn vị, Chi nhánh, Vùng, Nhóm, Email)
         kinds = ["info"] * len(columns)
+        for j in range(info_count, len(columns) - 1):
+            kinds[j] = "score"
+        kinds[-1] = "score"  # "Tổng" tô giống cột điểm
+
 
     wb = Workbook()
     ws = wb.active
@@ -158,7 +173,7 @@ def export_xlsx(request):
             cell.border = border_all
             # Font: header (r1) 12pt, body 11pt, không đậm (đúng yêu cầu “không in đậm”)
             if r_idx == 1:
-                cell.font = Font(name="Times new roman", size=12, bold=False)
+                cell.font = Font(name="Times new roman", size=12, bold=True)
             else:
                 cell.font = Font(name="Times new roman", size=11, bold=False)
             # Alignment
@@ -169,7 +184,7 @@ def export_xlsx(request):
             )
 
     # (giữ nguyên) Freeze 3 cột + 1 hàng tiêu đề
-    ws.freeze_panes = "D2"
+    ws.freeze_panes = "E2"
 
     # ==== Auto width (rộng hơn một chút) ====
     for i, col in enumerate(columns, start=1):
@@ -184,7 +199,7 @@ def export_xlsx(request):
 
 
     # Giữ freeze panes cũ (3 cột trái + 1 hàng tiêu đề)
-    ws.freeze_panes = "D2"
+    ws.freeze_panes = "E2"
 
     bio = BytesIO(); wb.save(bio); bio.seek(0)
     resp = HttpResponse(
@@ -198,9 +213,14 @@ def export_xlsx(request):
 def export_page(request):
     ct_id = request.GET.get("ct")
     ct = get_object_or_404(CuocThi, id=ct_id)
-    columns, rows = _flatten(ct)  # dùng hàm đã có ở dưới
+
+    # Chỉ lấy các cuộc thi đang bật
+    active_cts = CuocThi.objects.filter(trangThai=True).order_by("ma", "tenCuocThi")
+
+    columns, rows = _flatten(ct)
     return render(request, "export/index.html", {
         "contest": ct,
         "columns": columns,
-        "rows": rows
+        "rows": rows,
+        "active_cts": active_cts,   # <-- thêm vào context
     })

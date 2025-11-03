@@ -86,28 +86,7 @@ table.export-table{
 .export-table { position: relative; }
 .export-table td, .export-table th { position: relative; z-index: 1; }
 
-/* 3 cột trái đặc biệt: luôn trắng, không blur */
-.export-table thead th:nth-child(1),
-.export-table tbody td:nth-child(1) {
-  position: sticky; left: 0;
-  z-index: 9; background: #ebebeb;
-}
-.export-table thead th:nth-child(2),
-.export-table tbody td:nth-child(2) {
-  position: sticky; left: var(--col-left-1, 0px);
-  z-index: 9; background: #ebebeb;
-}
-.export-table thead th:nth-child(3),
-.export-table tbody td:nth-child(3) {
-  position: sticky; left: var(--col-left-2, 0px);
-  z-index: 9; background: #ebebeb;
-  box-shadow: 6px 0 10px -6px rgba(0,0,0,.18);
-}
 
-/* Hover đồng nhất với cột trái */
-.export-table tbody tr:hover td:nth-child(-n+3) {
-  background: #f8fafc;
-}
 
 /* === Cho JS toàn quyền set width bằng <colgroup> === */
 .export-table th, .export-table td { width: auto !important; max-width: none !important; min-width: 0 !important; }
@@ -155,12 +134,7 @@ table.export-table{
 .export-table thead th{
   border-bottom: 1px solid rgba(0,0,0,.12);
 }
-.export-table thead th:nth-child(3),
-.export-table tbody td:nth-child(3){
-  /* vì cột 3 có shadow, thêm border-right để ranh giới rõ hơn */
-  box-shadow: 6px 0 10px -6px rgba(0,0,0,.18);
-  border-right: 1px solid rgba(0,0,0,.12);
-}
+
 /* ===== Ô LỌC KHÔNG IN ĐẬM ===== */
 .filter-row input,
 .filter-row select,
@@ -174,6 +148,24 @@ table.export-table{
   font-weight: 400;
   opacity: .7;
 }
+/* Generic sticky N cột đầu (theo JS) */
+.export-table thead th.sticky-col,
+.export-table tbody td.sticky-col {
+  position: sticky;
+  z-index: 9;
+  background: #ebebeb;
+}
+.export-table thead th.sticky-shadow,
+.export-table tbody td.sticky-shadow {
+  box-shadow: 6px 0 10px -6px rgba(0,0,0,.18);
+  border-right: 1px solid rgba(0,0,0,.12);
+}
+
+/* Hover đồng nhất cho N cột đầu (4 cột) */
+.export-table tbody tr:hover td:nth-child(-n+4) {
+  background: #f8fafc !important;
+}
+
 </style>
 
 {% endblock %}
@@ -183,9 +175,31 @@ table.export-table{
   <div class="flex items-center justify-between mb-4">
     <h1 class="text-2xl font-bold">Export cuộc thi: {{ contest.tenCuocThi }} ({{ contest.ma }})</h1>
     <div class="flex gap-2">
-      <!-- Bỏ nút CSV -->
       <a id="exportVisibleBtn" class="btn" href="{% url 'export-xlsx' %}?ct={{ contest.id }}">Tải XLSX</a>
     </div>
+  </div>
+
+  <!-- HÀNG CHỌN CUỘC THI (chỉ đang bật) -->
+  <form id="ct-picker" class="mb-3" method="get" action="{% url 'export-page' %}">
+    <label for="ct-select">Chọn cuộc thi:</label>
+    <select id="ct-select" name="ct"
+            class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800"
+            style="min-width: 320px">
+      {% for c in active_cts %}
+        <option value="{{ c.id }}" {% if c.id == contest.id %}selected{% endif %}>
+          {{ c.tenCuocThi }} ({{ c.ma }})
+        </option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <script>
+    // Tự submit khi đổi cuộc thi
+    document.getElementById('ct-select')?.addEventListener('change', function(){
+      document.getElementById('ct-picker')?.submit();
+    });
+  </script>
+
   </div>
 
   {{ columns|json_script:"export-columns" }}
@@ -193,7 +207,7 @@ table.export-table{
   <script>
     window.EXPORT_COLUMNS = JSON.parse(document.getElementById("export-columns").textContent || "[]");
     window.EXPORT_ROWS    = JSON.parse(document.getElementById("export-rows").textContent || "[]");
-    window.FROZEN_COUNT   = 3;
+    window.FROZEN_COUNT   = 4;
   </script>
 
   <div class="excel-wrap mt-4">
