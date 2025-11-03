@@ -171,7 +171,7 @@
                         <!-- 4 ô nhỏ 2×2 -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div class="glass p-5 flex items-center gap-4">
-                                <img src="{% static 'icons/star.svg' %}" alt="" class="h-10 w-10 opacity-90">
+                                <img src="{% static 'icons/avgscore.png' %}" alt="" class="h-10 w-10 opacity-90">
                                 <div>
                                     <div class="text-sm opacity-70">Điểm trung bình</div>
                                     <div class="text-2xl font-semibold leading-none">{{ avg_score|floatformat:2 }}</div>
@@ -185,17 +185,17 @@
                                 </div>
                             </div>
                             <div class="glass p-5 flex items-center gap-4">
-                                <img src="{% static 'icons/pie.svg' %}" alt="" class="h-10 w-10 opacity-90">
+                                <img src="{% static 'icons/processing.png' %}" alt="" class="h-10 w-10 opacity-90">
                                 <div>
-                                    <div class="text-sm opacity-70">Mục D</div>
+                                    <div class="text-sm opacity-70">Mục D: Đang phát triển</div>
                                     <div class="text-2xl font-semibold leading-none">{% if metric_d %}{{ metric_d }}{%
                                         else %}—{% endif %}</div>
                                 </div>
                             </div>
                             <div class="glass p-5 flex items-center gap-4">
-                                <img src="{% static 'icons/wallet.svg' %}" alt="" class="h-10 w-10 opacity-90">
+                                <img src="{% static 'icons/processing.png' %}" alt="" class="h-10 w-10 opacity-90">
                                 <div>
-                                    <div class="text-sm opacity-70">Mục F</div>
+                                    <div class="text-sm opacity-70">Mục F: Đang phát triển</div>
                                     <div class="text-2xl font-semibold leading-none">{% if metric_f %}{{ metric_f }}{%
                                         else %}—{% endif %}</div>
                                 </div>
