@@ -1,4 +1,15 @@
 // static/core/organize.js
+// --- helpers phút/giây ---
+function secToParts(total) {
+  const t = Math.max(0, parseInt(total, 10) || 0);
+  return [Math.floor(t / 60), t % 60];  // [phút, giây]
+}
+function partsToSec(min, sec) {
+  const m = Math.max(0, parseInt(min, 10) || 0);
+  const s = Math.max(0, parseInt(sec, 10) || 0);
+  return m * 60 + s;
+}
+
 
 document.addEventListener('DOMContentLoaded', function () {
   // ===== Form "Thêm bài" — Ẩn/hiện Điểm tối đa theo phương thức chấm =====
@@ -7,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!sel) return;
     const maxLabel = f.querySelector('.js-max-label');
     const maxInput = f.querySelector('.js-max-input');
+    const fileTemplate = f.querySelector('.js-file-template');
 
     function sync() {
       if (sel.value === 'POINTS') {
@@ -15,6 +27,11 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         if (maxLabel) maxLabel.style.display = 'none';
         if (maxInput) { maxInput.style.display = 'none'; maxInput.required = false; maxInput.value = ''; }
+      }
+      if (fileTemplate) {
+        fileTemplate.style.display = (sel.value === 'TEMPLATE') ? '' : 'none';
+      } else {
+        fileTemplate.style.display = 'none';
       }
     }
     sel.addEventListener('change', sync);
@@ -43,20 +60,40 @@ document.addEventListener('DOMContentLoaded', function () {
   function closeTimeModal() { if (modal) modal.style.display = 'none'; }
 
   function addRowFromObj(obj) {
-    addRow(obj?.start ?? '', obj?.end ?? '', obj?.score ?? '');
+    const [sm, ss] = secToParts(obj?.start ?? 0);
+    const [em, es] = secToParts(obj?.end ?? 0);
+    addRow(sm, ss, em, es, obj?.score ?? '');
   }
-  function addRow(start, end, score) {
+  function addRow(sMin = '', sSec = '', eMin = '', eSec = '', score = '') {
     const row = document.createElement('div');
     row.className = 'row';
     row.innerHTML = `
-      <label>Thời gian bắt đầu (giây)</label>
-      <input type="number" min="0" step="1" class="tm-start" value="${start}">
-      <label>Thời gian kết thúc (giây)</label>
-      <input type="number" min="0" step="1" class="tm-end" value="${end}">
-      <label>Điểm</label>
-      <input type="number" step="1" class="tm-score" value="${score}" style="width:100px">
-      <button type="button" class="btn tm-del">Xoá</button>
+    <div class="tm-row">
+      <div class="tm-group">
+        <label class="tm-label">Thời gian bắt đầu</label>
+        <input type="number" min="0" step="1" class="tm-input tm-start-min" placeholder="" style="width:64px">
+        <span class="tm-unit" style="color: #989899ff; font-style: italic;">phút</span>
+        <input type="number" min="0" max="59" step="1" class="tm-input tm-start-sec" placeholder="" style="width:64px">
+        <span class="tm-unit" style="color: #989899ff; font-style: italic;">giây</span>
+      </div>
+      <div class="tm-group">
+        <label class="tm-label">Thời gian kết thúc</label>
+        <input type="number" min="0" step="1" class="tm-input tm-end-min" placeholder="" style="width:64px">
+        <span class="tm-unit" style="color: #989899ff; font-style: italic;">phút</span>
+        <input type="number" min="0" max="59" step="1" class="tm-input tm-end-sec" placeholder="" style="width:64px">
+        <span class="tm-unit" style="color: #989899ff; font-style: italic;">giây</span>
+      </div>
+      <div class="tm-group tm-scorebox">
+        <label class="tm-label">Điểm</label>
+        <input type="number" step="1" class="tm-input tm-score" value="${score}" style="width:90px">
+        <button type="button" class="btn tm-del">Xoá</button>
+      </div>
+    </div>
     `;
+    row.querySelector('.tm-start-min').value = sMin;
+    row.querySelector('.tm-start-sec').value = sSec;
+    row.querySelector('.tm-end-min').value   = eMin;
+    row.querySelector('.tm-end-sec').value   = eSec;
     row.querySelector('.tm-del').addEventListener('click', () => row.remove());
     rowsBox.appendChild(row);
   }
@@ -71,24 +108,68 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  btnAdd?.addEventListener('click', () => addRow('', '', ''));
+  btnAdd?.addEventListener('click', () => addRow('', '', '', '', ''));
   btnClose?.addEventListener('click', closeTimeModal);
   modal?.addEventListener('click', (e) => { if (e.target === modal) closeTimeModal(); });
 
-  // submit: gom dữ liệu → JSON
-  form?.addEventListener('submit', function () {
+  // --- Kiểm tra và gom dữ liệu → JSON ---
+  form?.addEventListener('submit', function (e) {
     if (!rowsBox || !inputJSON) return;
     const rows = [];
-    rowsBox.querySelectorAll('.row').forEach(function (r) {
-      const s = r.querySelector('.tm-start')?.value || '0';
-      const e2 = r.querySelector('.tm-end')?.value || '0';
-      const sc = r.querySelector('.tm-score')?.value || '0';
-      rows.push({
-        start: parseInt(s, 10) || 0,
-        end: parseInt(e2, 10) || 0,
-        score: parseInt(sc, 10) || 0
-      });
+    let hasError = false;
+    let msg = '';
+
+    rowsBox.querySelectorAll('.row').forEach(function (r, i) {
+      // Ép kiểu số nguyên, nếu rỗng coi là NaN
+      const sm = parseInt(r.querySelector('.tm-start-min')?.value ?? '', 10);
+      const ss = parseInt(r.querySelector('.tm-start-sec')?.value ?? '', 10);
+      const em = parseInt(r.querySelector('.tm-end-min')?.value ?? '', 10);
+      const es = parseInt(r.querySelector('.tm-end-sec')?.value ?? '', 10);
+      const sc = parseInt(r.querySelector('.tm-score')?.value ?? '', 10);
+
+      // 1️⃣ Kiểm tra trống
+      if (isNaN(sm) || isNaN(ss) || isNaN(em) || isNaN(es)) {
+        hasError = true;
+        msg = `Dòng ${i + 1}: thời gian không được để trống.`;
+      }
+
+      // 2️⃣ Kiểm tra âm
+      else if (sm < 0 || ss < 0 || em < 0 || es < 0) {
+        hasError = true;
+        msg = `Dòng ${i + 1}: thời gian không được âm.`;
+      }
+
+      // 3️⃣ Kiểm tra giây vượt 59
+      else if (ss > 59 || es > 59) {
+        hasError = true;
+        msg = `Dòng ${i + 1}: giá trị giây phải trong khoảng 0–59.`;
+      }
+
+      // 4️⃣ Tính ra giây để so sánh
+      const startSec = partsToSec(sm, ss);
+      const endSec   = partsToSec(em, es);
+
+      // 5️⃣ Kiểm tra thời gian kết thúc nhỏ hơn bắt đầu
+      if (!hasError && endSec <= startSec) {
+        hasError = true;
+        msg = `Dòng ${i + 1}: thời gian kết thúc phải lớn hơn thời gian bắt đầu.`;
+      }
+
+      // 6️⃣ Kiểm tra điểm âm
+      if (!hasError && (isNaN(sc) || sc < 0)) {
+        hasError = true;
+        msg = `Dòng ${i + 1}: điểm không được âm hoặc bỏ trống.`;
+      }
+
+      rows.push({ start: startSec, end: endSec, score: sc || 0 });
     });
+
+    if (hasError) {
+      e.preventDefault();
+      alert(msg);
+      return false;
+    }
+
     inputJSON.value = JSON.stringify(rows);
   });
 
