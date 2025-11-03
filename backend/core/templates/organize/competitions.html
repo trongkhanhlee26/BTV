@@ -258,14 +258,14 @@
 
     <div id="create-card" class="card" style="display:none">
       <h3 style="margin:0 0 10px">Thêm Cuộc thi</h3>
-      <form method="post" class="row">
+      <form id="create-form" method="post" class="row">
         {% csrf_token %}
         <input type="hidden" name="action" value="create">
         <input type="text" name="tenCuocThi" placeholder="Tên cuộc thi" required style="min-width:280px">
-                    <label>Trạng thái</label>
-                    <label style="display:flex;align-items:center;gap:6px">
-                        <input type="checkbox" name="trangThai"> Bật
-                    </label>
+        <label>Trạng thái</label>
+        <label style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" name="trangThai"> Bật
+        </label>
         <button class="btn" type="submit">Tạo</button>
       </form>
     </div>
@@ -294,7 +294,7 @@
           <tr>
             <td><span class="code">{{ ct.ma }}</span></td>
             <td>
-              <form method="post" class="row" style="gap:6px">
+              <form method="post" class="row js-update-form" style="gap:6px">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="update">
                 <input type="hidden" name="id" value="{{ ct.id }}">

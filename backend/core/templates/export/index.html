@@ -161,6 +161,19 @@ table.export-table{
   box-shadow: 6px 0 10px -6px rgba(0,0,0,.18);
   border-right: 1px solid rgba(0,0,0,.12);
 }
+/* ===== Ô LỌC KHÔNG IN ĐẬM ===== */
+.filter-row input,
+.filter-row select,
+.filter-row textarea{
+  font-weight: 400 !important;   /* normal */
+  font-size: 14px;               /* dễ đọc hơn một chút */
+}
+
+/* Placeholder cũng không đậm, màu dịu */
+.filter-row input::placeholder{
+  font-weight: 400;
+  opacity: .7;
+}
 </style>
 
 {% endblock %}
@@ -171,7 +184,7 @@ table.export-table{
     <h1 class="text-2xl font-bold">Export cuộc thi: {{ contest.tenCuocThi }} ({{ contest.ma }})</h1>
     <div class="flex gap-2">
       <!-- Bỏ nút CSV -->
-      <a class="btn" href="{% url 'export-xlsx' %}?ct={{ contest.id }}">Tải XLSX</a>
+      <a id="exportVisibleBtn" class="btn" href="{% url 'export-xlsx' %}?ct={{ contest.id }}">Tải XLSX</a>
     </div>
   </div>
 

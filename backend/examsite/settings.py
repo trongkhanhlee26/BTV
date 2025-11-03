@@ -78,20 +78,21 @@ WSGI_APPLICATION = 'examsite.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    db_url = (
+        f"postgresql://{os.getenv('POSTGRES_USER','examuser')}:"
+        f"{os.getenv('POSTGRES_PASSWORD','examsecret')}@"
+        f"{os.getenv('DB_HOST','exam_db')}:"
+        f"{os.getenv('DB_PORT','5432')}/"
+        f"{os.getenv('POSTGRES_DB','examdb')}"
+    )
+
 DATABASES = {
-    # "default": {
-    #     "ENGINE": "django.db.backends.postgresql",
-    #     "NAME": os.environ.get("POSTGRES_DB", "examdb"),
-    #     "USER": os.environ.get("POSTGRES_USER", "examuser"),
-    #     "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "examsecret"),
-    #     "HOST": os.environ.get("DB_HOST", "db"),
-    #     "PORT": os.environ.get("DB_PORT", "5432"),
-    #     "CONN_MAX_AGE": 60,
-    # }
-    "default": dj_database_url.config(
-        default=os.getenv("DATABASE_URL"),
+    "default": dj_database_url.parse(
+        db_url,
         conn_max_age=600,
-        ssl_require=True
+        ssl_require=False  # local docker postgres doesn't use SSL
     )
 }
 

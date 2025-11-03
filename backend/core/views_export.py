@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Avg
-
+from openpyxl.styles import Alignment, Font, PatternFill, Border, Side  # <- thêm Border, Side
 from .models import CuocThi, VongThi, BaiThi, ThiSinh, PhieuChamDiem
 
 def _score_type(bt) -> str:
@@ -93,44 +93,107 @@ def _flatten(ct: CuocThi):
 
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
-from openpyxl.styles import Alignment, Font
-
+from openpyxl.styles import Alignment, Font, PatternFill
+from io import BytesIO
 def export_xlsx(request):
     ct_id = request.GET.get("ct")
     ct = get_object_or_404(CuocThi, id=ct_id)
-    columns, rows = _flatten(ct)
+
+    use_visible = (request.method == "POST")
+    if use_visible:
+        # Nhận payload từ frontend
+        import json
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+            columns = payload.get("columns") or []
+            rows = payload.get("rows") or []
+            kinds = payload.get("col_kinds") or ["info"] * len(columns)
+        except Exception:
+            # fallback sang full nếu payload lỗi
+            columns, rows = _flatten(ct)
+            kinds = ["info"] * len(columns)
+    else:
+        # GET: xuất full như cũ
+        columns, rows = _flatten(ct)
+        kinds = ["info"] * len(columns)
 
     wb = Workbook()
     ws = wb.active
     ws.title = f"{ct.ma}"
 
-    # Header
+    # ==== Header: KHÔNG in đậm ====
     ws.append(columns)
     for c in range(1, len(columns)+1):
         cell = ws.cell(row=1, column=c)
-        cell.font = Font(bold=True, size=13)    # to hơn
+        cell.font = Font(bold=True, size=12)  # KHÔNG in đậm
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    # Body
+    # ==== Body: dùng rows đã có (full hoặc visible) ====
     for r in rows:
         ws.append(r)
 
-    # Auto width
-    for i, col in enumerate(columns, start=1):
-        maxlen = max([len(str(col))] + [len(str(r[i-1])) for r in rows if r[i-1] is not None])
-        ws.column_dimensions[get_column_letter(i)].width = min(maxlen + 2, 48)
+    # ==== Tô màu theo CỘT ====
+    fill_info  = PatternFill(fill_type="solid", start_color="FFEAF4FF", end_color="FFEAF4FF")  # xanh nhạt
+    fill_score = PatternFill(fill_type="solid", start_color="FFFFF5E6", end_color="FFFFF5E6")  # vàng nhạt
 
-    # Freeze 3 cột + 1 hàng tiêu đề
+    max_row = ws.max_row
+    max_col = ws.max_column
+    for j in range(1, max_col+1):
+        kind = kinds[j-1] if (j-1) < len(kinds) else "info"
+        fill = fill_score if kind == "score" else fill_info
+        for i in range(1, max_row+1):
+            ws.cell(row=i, column=j).fill = fill
+
+
+    # ... sau khi append header + body và tô màu, tính sẵn:
+    max_row = ws.max_row
+    max_col = ws.max_column
+
+    # ==== Border mảnh cho toàn bộ ô ====
+    thin = Side(style="thin", color="FF000000")
+    border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for r_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col), start=1):
+        for cell in row:
+            cell.border = border_all
+            # Font: header (r1) 12pt, body 11pt, không đậm (đúng yêu cầu “không in đậm”)
+            if r_idx == 1:
+                cell.font = Font(name="Times new roman", size=12, bold=False)
+            else:
+                cell.font = Font(name="Times new roman", size=11, bold=False)
+            # Alignment
+            cell.alignment = Alignment(
+                vertical="center",
+                wrap_text=True,
+                horizontal=cell.alignment.horizontal if cell.alignment else "left"
+            )
+
+    # (giữ nguyên) Freeze 3 cột + 1 hàng tiêu đề
     ws.freeze_panes = "D2"
 
-    from io import BytesIO
-    bio = BytesIO()
-    wb.save(bio); bio.seek(0)
+    # ==== Auto width (rộng hơn một chút) ====
+    for i, col in enumerate(columns, start=1):
+        maxlen = len(str(col)) if col is not None else 0
+        for r in rows:
+            v = r[i-1] if i-1 < len(r) else ""
+            l = len(str(v)) if v is not None else 0
+            if l > maxlen:
+                maxlen = l
+        # padding rộng hơn: +4, tối thiểu 12, tối đa 60
+        ws.column_dimensions[get_column_letter(i)].width = max(12, min(maxlen + 4, 60))
+
+
+    # Giữ freeze panes cũ (3 cột trái + 1 hàng tiêu đề)
+    ws.freeze_panes = "D2"
+
+    bio = BytesIO(); wb.save(bio); bio.seek(0)
     resp = HttpResponse(
         bio.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    resp["Content-Disposition"] = f'attachment; filename=export_{ct.ma}.xlsx'
+    # Tên file: nếu POST visible thì đổi chút cho phân biệt
+    fname = f'export_{ct.ma}.xlsx' if not use_visible else f'export_{ct.ma}_visible.xlsx'
+    resp["Content-Disposition"] = f'attachment; filename="{fname}"'
     return resp
 def export_page(request):
     ct_id = request.GET.get("ct")
