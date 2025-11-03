@@ -13,12 +13,12 @@
     const SCORE_COL_WIDTH = 100;   // px. Có thể chỉnh 96 / 110 tùy ý.
     const SCORE_COL_MIN   = 90;    // px. Sàn để tránh hẹp quá.
     const SCORE_COL_MAX   = 140;   // px. Trần nếu bạn muốn nới.
-    // Nhận diện cột "bài thi": tiêu đề có xuống dòng (Vòng...\nBài thi...)
-    // Nếu sau này bạn muốn chỉ định thủ công từ cột thứ N trở đi: đổi implement ở hàm isScoreCol.
-    const isScoreCol = (headerText, index) => {
-    return String(headerText || '').includes('\n');
-    };
-
+  function normalizeSttStr(s) {
+  const t = String(s ?? '').trim();
+  if (!t) return '';
+  // bỏ 0 ở đầu nhưng giữ lại "0"
+  return t.replace(/^0+(?=\d)/, '');
+}
   // --- Utilities ---
   const fmtHeader = (title) => (title ?? '').toString().replace(/\n/g, '<br>');
 
@@ -44,6 +44,7 @@
 
   // --- Render body ---
   let viewRows = rows.map((r, idx) => ({ r, _i: idx }));
+  window.viewRows = viewRows;
   function renderBody(data = viewRows) {
     body.innerHTML = '';
     const frag = document.createDocumentFragment();
@@ -57,23 +58,57 @@
       frag.appendChild(tr);
     });
     body.appendChild(frag);
-
+    window.viewRows = data;
     autoFit();   // đo & set width mỗi lần render
     applySticky();
   }
   renderBody();
 
-  // --- Filtering ---
-  function applyFilters() {
-    const inputs = Array.from(filter.querySelectorAll('input'));
-    const terms = inputs.map(ip => ip.value.trim().toLowerCase());
-    const filtered = rows.map((r, idx) => ({ r, _i: idx })).filter(({ r }) =>
-      terms.every((q, i) => !q || (r[i] ?? '').toString().toLowerCase().includes(q))
-    );
-    if (sortState.index !== null) filtered.sort(compare(sortState.index, sortState.dir));
-    viewRows = filtered;
-    renderBody(filtered);
+function applyFilters() {
+  const inputs = Array.from(document.querySelectorAll('#filter-row input, #filter-row select'));
+  const queries = inputs.map(el => (el.value || '').toString().trim());
+
+  const filtered = [];
+  for (const obj of rows.map((r, idx) => ({ r, _i: idx }))) {
+    let ok = true;
+    for (let j = 0; j < queries.length; j++) {
+      const qRaw = queries[j];
+      if (!qRaw) continue;
+
+      const cellRaw = (obj.r[j] ?? '').toString().trim();
+
+      if (j === 0) {
+        // ===== CỘT STT =====
+        const cellNorm = normalizeSttStr(cellRaw);  // "01" -> "1"
+        const qNorm    = normalizeSttStr(qRaw);
+
+        const typedHasLeadingZero = /^0+\d+$/.test(qRaw);  // gõ "01", "0007", ...
+
+        let hit;
+        if (typedHasLeadingZero) {
+          // Người dùng cố ý gõ 0 ở đầu => so sánh số CHÍNH XÁC
+          const a = Number.parseInt(cellNorm || '0', 10);
+          const b = Number.parseInt(qNorm   || '0', 10);
+          hit = (a === b);
+        } else {
+          // Gõ bình thường (vd "1") => substring (bao gồm 1, 10, 21, ...)
+          hit = cellNorm.includes(qNorm) || cellRaw.toLowerCase().includes(qRaw.toLowerCase());
+        }
+
+        if (!hit) { ok = false; break; }
+      } else {
+        // ===== CỘT KHÁC =====
+        if (!cellRaw.toLowerCase().includes(qRaw.toLowerCase())) { ok = false; break; }
+      }
+
+    }
+    if (ok) filtered.push(obj);
   }
+  viewRows = filtered;
+  window.viewRows = viewRows;     // để nút Export lấy đúng phần đang xem
+  renderBody(filtered);
+}
+
 
   // --- Sorting ---
   const sortState = { index: null, dir: 1 }; // 1=asc, -1=desc
@@ -81,6 +116,7 @@
     if (sortState.index === i) sortState.dir *= -1;
     else { sortState.index = i; sortState.dir = 1; }
     viewRows.sort(compare(i, sortState.dir));
+    window.viewRows = viewRows;
     renderBody(viewRows);
     // UI cue
     Array.from(head.children).forEach((th, j) => {
@@ -113,6 +149,8 @@ function autoFit() {
     if (diff < 0) for (let i = 0; i < -diff; i++) colgroup.lastElementChild.remove();
   }
 
+
+
   // Measurer
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -134,7 +172,7 @@ function autoFit() {
   const MIN_DEFAULT = 60;      // sàn cho cột auto-fit
 
   // Sàn riêng cho 3 cột trái (STT/Mã NV/Họ tên)
-  const minFor = (i) => (i === 0 ? 36 : i === 1 ? 70 : i === 2 ? 150 : MIN_DEFAULT);
+  const minFor = (i) => (i === 0 ? 36 : i === 1 ? 70 : i === 2 ? 150 : i === 3 ? 110 : MIN_DEFAULT);
 
   for (let i = 0; i < columns.length; i++) {
     const header = columns[i] ? String(columns[i]) : '';
@@ -174,42 +212,86 @@ function autoFit() {
 }
 
 
-  // --- Sticky frozen columns (3 cột trái) ---
-  function applySticky() {
-    table.querySelectorAll('.sticky-col,.sticky-col-1,.sticky-col-2,.sticky-shadow').forEach(el => {
-      el.classList.remove('sticky-col','sticky-col-1','sticky-col-2','sticky-shadow');
-      el.style.left = '';
-    });
+function applySticky() {
+  // gỡ class cũ
+  table.querySelectorAll('.sticky-col,.sticky-shadow').forEach(el => {
+    el.classList.remove('sticky-col','sticky-shadow');
+    el.style.left = '';
+  });
 
-    // Sau autoFit(), đã có colgroup width → đo lại
-    const colWidths = [];
-    Array.from(head.children).forEach((th, i) => {
-      colWidths[i] = th.getBoundingClientRect().width;
-    });
+  // đo width từng cột header (đã autoFit bằng <colgroup>)
+  const colWidths = Array.from(head.children).map(th => th.getBoundingClientRect().width);
 
-    const left0 = 0;
-    const left1 = left0 + (colWidths[0] || 0);
-    const left2 = left1 + (colWidths[1] || 0);
-
-    table.style.setProperty('--col-left-1', left1 + 'px');
-    table.style.setProperty('--col-left-2', left2 + 'px');
-
-    const applyForRow = (rowEl) => {
-      const cells = rowEl.children;
-      if (!cells.length) return;
-      cells[0].classList.add('sticky-col','sticky-shadow');
-      cells[1].classList.add('sticky-col','sticky-col-1','sticky-shadow');
-      cells[2].classList.add('sticky-col','sticky-col-2','sticky-shadow');
-      cells[0].style.left = left0 + 'px';
-    };
-    applyForRow(head);
-    applyForRow(filter);
-    body.querySelectorAll('tr').forEach(applyForRow);
+  // tính left offset tích luỹ cho FROZEN cột
+  const lefts = [];
+  let acc = 0;
+  for (let k = 0; k < Math.min(FROZEN, colWidths.length); k++) {
+    lefts[k] = acc;
+    acc += (colWidths[k] || 0);
   }
+  const LAST = Math.min(FROZEN, colWidths.length) - 1;
+
+  const stickRow = (rowEl) => {
+    const cells = rowEl.children;
+    for (let k = 0; k <= LAST; k++) {
+      const td = cells[k];
+      if (!td) break;
+      td.classList.add('sticky-col');
+      td.style.left = lefts[k] + 'px';
+      if (k === LAST) td.classList.add('sticky-shadow'); // chỉ cột ngoài cùng có bóng ranh giới
+    }
+  };
+  stickRow(head);
+  stickRow(filter);
+  body.querySelectorAll('tr').forEach(stickRow);
+}
+
 
   // Re-calc khi resize/zoom
   window.addEventListener('resize', () => { autoFit(); applySticky(); });
 
   // fonts có thể load chậm → đo lại sau một vòng frame
   requestAnimationFrame(() => { autoFit(); applySticky(); });
+
+    function isScoreCol(headerText) {
+    // Cột điểm có tiêu đề 2 dòng: "Vòng\nBài thi"
+    return String(headerText || '').includes('\n');
+  }
+
+  function buildVisiblePayload() {
+    const colKinds = (window.EXPORT_COLUMNS || []).map(h => isScoreCol(h) ? 'score' : 'info');
+    const rows = (window.viewRows || []).map(obj => obj.r);  // đúng thứ tự đang hiển thị
+    return { columns: window.EXPORT_COLUMNS || [], rows, col_kinds: colKinds };
+  }
+
+  async function exportVisible(e) {
+    e.preventDefault();
+    const a = e.currentTarget;
+    const url = a.getAttribute('href');
+    const payload = buildVisiblePayload();
+
+    // CSRF (nếu dùng Django CSRF cookie)
+    const csrftoken = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1];
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) { alert('Xuất XLSX thất bại.'); return; }
+
+    const blob = await res.blob();
+    const dl = document.createElement('a');
+    dl.href = URL.createObjectURL(blob);
+    dl.download = 'export_visible.xlsx';
+    document.body.appendChild(dl);
+    dl.click();
+    dl.remove();
+  }
+
+  document.getElementById('exportVisibleBtn')?.addEventListener('click', exportVisible);
+
 })();

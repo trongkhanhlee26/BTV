@@ -472,32 +472,50 @@ if ($modal && $msg && $ok && $cancel) {
   });
 
   // 1) Đổi tên
-  document.querySelectorAll('form.row input[name="tenCuocThi"]').forEach(input => {
-    input.addEventListener('change', (e) => {
-      const form = e.target.closest('form');
-      const init = e.target.dataset.init || '';
-      const now  = e.target.value.trim();
-      if (now === init) return;
-      openConfirm(`Đổi tên cuộc thi từ “${init}” → “${now}”?`,
-        () => form.submit(),
-        () => { e.target.value = init; }
-      );
-    });
+// ===== XÁC NHẬN CHỈ CHO FORM CẬP NHẬT (trong bảng) =====
+document.querySelectorAll('form.js-update-form input[name="tenCuocThi"]').forEach(input => {
+  input.addEventListener('change', (e) => {
+    const form = e.target.closest('form.js-update-form');
+    const init = e.target.dataset.init || '';
+    const now  = e.target.value.trim();
+    if (now === init) return;
+    openConfirm(`Đổi tên cuộc thi từ “${init}” → “${now}”?`,
+      () => form.submit(),
+      () => { e.target.value = init; }
+    );
   });
+});
 
-  // 2) Bật/Tắt
-  document.querySelectorAll('form.row input[name="trangThai"]').forEach(chk => {
-    chk.addEventListener('change', (e) => {
-      const form = e.target.closest('form');
-      const init = (e.target.dataset.init === '1');
-      const now  = e.target.checked;
-      if (now === init) return;
-      openConfirm(`Xác nhận ${now ? 'BẬT' : 'TẮT'} cuộc thi này?`,
-        () => form.submit(),
-        () => { e.target.checked = init; }
-      );
+document.querySelectorAll('form.js-update-form input[name="trangThai"]').forEach(chk => {
+  chk.addEventListener('change', (e) => {
+    const form = e.target.closest('form.js-update-form');
+    const init = (e.target.dataset.init === '1');
+    const now  = e.target.checked;
+    if (now === init) return;
+    openConfirm(`Xác nhận ${now ? 'BẬT' : 'TẮT'} cuộc thi này?`,
+      () => form.submit(),
+      () => { e.target.checked = init; }
+    );
+  });
+});
+
+// ===== FORM TẠO MỚI: CHỈ HỎI XÁC NHẬN KHI BẤM NÚT "TẠO" =====
+const createForm = document.getElementById('create-form');
+if (createForm) {
+  let allowSubmit = false;
+  createForm.addEventListener('submit', function (e) {
+    if (allowSubmit) return;            // lần 2: cho qua
+    e.preventDefault();                 // chặn submit lần đầu để mở popup
+    const ten = (createForm.querySelector('input[name="tenCuocThi"]')?.value || '').trim();
+    const on  = createForm.querySelector('input[name="trangThai"]')?.checked;
+    const msg = `Tạo cuộc thi “${ten || '(không tên)'}”${on ? ' (BẬT ngay)' : ''}?`;
+    openConfirm(msg, () => {
+      allowSubmit = true;               // bật cờ để submit thật
+      createForm.submit();
     });
   });
+}
+
 
   // tuỳ chọn: expose nếu muốn gọi tay trong console
   window.openConfirm = openConfirm;
