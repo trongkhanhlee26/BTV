@@ -25,6 +25,7 @@ from core.views_management import management_view
 from core.views_export import export_page, export_xlsx
 from django.urls import path
 from core import views_score
+from core.views_admin import import_view
 
 urlpatterns = [\
     path("", home_view, name="home"),
@@ -42,4 +43,5 @@ urlpatterns = [\
     path("score/template/<int:btid>/", views_score.score_template_api, name="score_template_api"),
     path("export", export_page, name="export-page"),     # trang bảng “Excel-like”
     path("export-xlsx", export_xlsx, name="export-xlsx"),
+    path("import/", import_view, name="import"),
 ]

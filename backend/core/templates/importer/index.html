@@ -2,6 +2,18 @@
 {% load static %}
 
 {% block title %}Import CSV/XLSX{% endblock %}
+{% block head_extra %}
+<style>
+    .download-link {
+        color: #b1c9ef;       
+        text-decoration: underline;
+        cursor: pointer;
+    }
+    .download-link:hover {
+        color: #0056b3; 
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="mx-auto max-w-5xl px-4">
@@ -22,7 +34,7 @@
                         class="w-full rounded-xl bg-white/90 text-slate-800 border border-white/50 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300">
                         <option value="">-- chọn cuộc thi --</option>
                         {% for ct in cuocthi_list %}
-                        <option value="{{ ct.ma }}">{{ ct.ma }} - {{ ct.tenCuocThi }}</option>
+                        <option value="{{ ct.ma }}" {% if preselected_ma == ct.ma %}selected{% endif %}>{{ ct.ma }} - {{ ct.tenCuocThi }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -48,7 +60,7 @@
                             <span class="font-medium">Kéo & thả</span> hoặc <span class="underline">chọn tệp</span>
                         </div>
 
-                        <div id="file-name" class="text-xs text-white/80"></div>
+                        <div id="file-name" class="text-xs text-white/80" style="font-size: medium;"></div>
                     </label>
                 </div>
 
@@ -57,7 +69,6 @@
                          px-4 py-2 font-medium text-white">
                         Import
                     </button>
-                    <a href="/admin/" class="ml-2 text-white/80 hover:text-white">Về trang Admin</a>
                 </div>
             </form>
 
@@ -79,11 +90,14 @@
     </div>
 
     <div class="mt-6 grid md:grid-cols-2 gap-4">
-        <div class="glass rounded-2xl border border-white/30 p-5">
+        <div class="glass rounded-2xl border border-white/30 p-5" style="backdrop-filter: blur(20px);-webkit-backdrop-filter: blur(20px);">
             <h2 class="font-semibold">Hướng dẫn nhanh</h2>
             <ol class="mt-2 list-decimal pl-5 text-white/80 text-sm space-y-1">
                 <li>Chọn loại dữ liệu.</li>
-                <li>Chọn hoặc kéo thả tệp CSV/XLSX.</li>
+                <li>Chọn hoặc kéo thả tệp CSV/XLSX. <br>
+                (<a class="download-link" href="{% static 'files/file mẫu thí sinh.xlsx' %}" download>file_mẫu_thí_sinh.xlsx</a> / 
+                <a class="download-link" href="{% static 'files/file mẫu giám khảo.xlsx' %}" download>file_mẫu_giám_khảo.xlsx</a>)
+                </li>
                 <li>Nhấn <span class="font-medium">Import</span>.</li>
             </ol>
             <p class="mt-3 text-xs text-white/70">CSV nên mã hóa UTF-8. Header có thể có/không dấu — hệ thống đã map tự
@@ -91,15 +105,41 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block body_extra %}
 <script>
-    const input = document.getElementById('file-input');
-    const nameBox = document.getElementById('file-name');
-    input.addEventListener('change', () => {
-        nameBox.textContent = input.files.length ? input.files[0].name : '';
-    });
-</script>
+document.addEventListener('DOMContentLoaded', function () {
+  const input   = document.getElementById('file-input');
+  const nameBox = document.getElementById('file-name');
+  const dz      = document.getElementById('dropzone');
 
+  if (!input || !nameBox) return;
+
+  function showName(files) {
+    if (!files || !files.length) { nameBox.textContent = ''; return; }
+    nameBox.textContent = (files.length === 1)
+      ? files[0].name
+      : `${files.length} tệp đã chọn`;
+  }
+
+  // Chọn bằng nút "chọn tệp"
+  input.addEventListener('change', () => showName(input.files));
+
+  // Hỗ trợ kéo & thả (nếu dùng)
+  if (dz) {
+    ['dragenter','dragover'].forEach(ev => {
+      dz.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); dz.classList.add('is-drag'); });
+    });
+    ['dragleave','drop'].forEach(ev => {
+      dz.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('is-drag'); });
+    });
+    dz.addEventListener('drop', e => {
+      const dtFiles = e.dataTransfer && e.dataTransfer.files;
+      if (dtFiles && dtFiles.length) {
+        // gán vào input để form submit được
+        input.files = dtFiles;
+        showName(input.files);
+      }
+    });
+  }
+});
+</script>
 {% endblock %}

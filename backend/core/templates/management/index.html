@@ -56,8 +56,16 @@
 {% block content %}
 
 <div id="dashboard" class="flex gap-6">
-    <!-- Sidebar: chỉ Export -->
+    <!-- Sidebar: Import và Export -->
     <aside class="sidebar p-4">
+        <div class="mt-2 p-3 bg-white/5 rounded-xl">
+            <div class="text-sm opacity-80 mb-2">Thêm danh sách</div>
+            <a href="/import{% if contest %}?ct={{ contest.id }}{% endif %}"
+                class="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg">
+                <img src="{% static 'icons/download.svg' %}" class="h-4 w-4" alt="">
+                <span>Import</span>
+            </a>
+        </div>
         <div class="mt-2 p-3 bg-white/5 rounded-xl">
             <div class="text-sm opacity-80 mb-2">Báo cáo</div>
             <a href="/export{% if contest %}?ct={{ contest.id }}{% endif %}"
