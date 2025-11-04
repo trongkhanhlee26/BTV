@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.db.models import Prefetch
-from .models import CuocThi, VongThi, BaiThi, BaiThiTimeRule, BaiThiTemplateSection, BaiThiTemplateItem
+from .models import CuocThi, VongThi, BaiThi, BaiThiTimeRule, BaiThiTemplateSection, BaiThiTemplateItem, GiamKhao, GiamKhaoBaiThi
 
 
 
@@ -52,22 +52,40 @@ def organize_view(request, ct_id=None):
                 ten_bt = (request.POST.get("tenBaiThi") or "").strip()
                 method = request.POST.get("phuongThucCham") or "POINTS"
                 max_diem = request.POST.get("cachChamDiem")
+                judge_id = (request.POST.get("judge_id") or "").strip()
                 # POINTS thì phải có max_diem; TIME/TEMPLATE thì cho phép max_diem=0 tạm thời
                 if not vt_id or not ten_bt:
                     messages.error(request, "Vui lòng chọn vòng thi và nhập tên bài thi.")
-                elif method == "POINTS" and not max_diem:
+                    return redirect(request.path)
+                
+                if not judge_id:
+                    messages.error(request, "Vui lòng chọn giám khảo chấm cho bài thi.")
+                    return redirect(request.path)
+                
+                if method == "POINTS" and not max_diem:
                     messages.error(request, "Vui lòng nhập điểm tối đa cho phương thức thang điểm.")
-                else:
-                    vong_thi = VongThi.objects.get(id=vt_id)
-                    bt = BaiThi(
-                        tenBaiThi=ten_bt,
-                        vongThi=vong_thi,
-                        phuongThucCham=method,
-                        cachChamDiem=int(max_diem) if (method == "POINTS" and max_diem) else 0,
-                    )
-                    bt.save()  # auto-gen bt.ma
-                    messages.success(request, f"Tạo bài thi {bt.ma} trong {vong_thi.ma} thành công.")
+                    return redirect(request.path)
+
+                vong_thi = VongThi.objects.get(id=vt_id)
+                bt = BaiThi.objects.create(
+                    tenBaiThi=ten_bt,
+                    vongThi=vong_thi,
+                    phuongThucCham=method,
+                    cachChamDiem=int(max_diem) if (method == "POINTS" and max_diem) else 0,
+                )
+
+                # --- phân công giám khảo ---
+                gk = GiamKhao.objects.filter(maNV=judge_id, role="JUDGE").first()
+                if not gk:
+                    bt.delete() 
+                    messages.error(request, "Giám khảo không hợp lệ hoặc không phải role Giám khảo.")
+                    return redirect(request.path)
+
+                GiamKhaoBaiThi.objects.get_or_create(giamKhao=gk, baiThi=bt)
+
+                messages.success(request, f"Tạo bài thi “{bt.tenBaiThi}” trong vòng “{vong_thi.tenVongThi}” thành công.")
                 return redirect(request.path)
+
             # NEW: cấu hình thang thời gian
             if action == "config_time_rules":
                 import json
@@ -287,12 +305,18 @@ def organize_view(request, ct_id=None):
             queryset=VongThi.objects.prefetch_related(
                 "bai_thi__time_rules",
                 "bai_thi__template_sections__items",
+                Prefetch( 
+                    "bai_thi__giam_khao_duoc_chi_dinh",
+                    queryset=GiamKhaoBaiThi.objects.select_related("giamKhao"),
+                    to_attr="assignments"
+                ),
             )
         )
     ).order_by("-id")
     if ct_id:
         base_qs = base_qs.filter(id=ct_id)
-    return render(request, "organize/index.html", {"cuoc_this": base_qs})
+    judges = GiamKhao.objects.filter(role="JUDGE").order_by("hoTen")
+    return render(request, "organize/index.html", {"cuoc_this": base_qs, "judges": judges})
 
 
 @require_http_methods(["GET", "POST"])

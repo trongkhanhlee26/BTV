@@ -223,306 +223,367 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-// ===== Gợi ý + Tìm kiếm (autocomplete giống index) =====
-const searchBox = document.getElementById('search-ct');
-const suggList  = document.getElementById('ct-suggest');   // dropdown
-const table     = document.querySelector('table');
+  // ===== Gợi ý + Tìm kiếm (autocomplete giống index) =====
+  const searchBox = document.getElementById('search-ct');
+  const suggList  = document.getElementById('ct-suggest');   // dropdown
+  const table     = document.querySelector('table');
 
-// Chuẩn hoá bỏ dấu
-const vnNorm = s => (s || '')
-  .toString()
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase()
-  .trim();
+  // Chuẩn hoá bỏ dấu
+  const vnNorm = s => (s || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 
-if (table && searchBox) {
-  const rows = Array.from(table.querySelectorAll('tbody tr'));
-  const takeName = (tr) => {
-    const inp = tr.querySelector('input[name="tenCuocThi"]');
-    if (inp && inp.value) return inp.value.trim();
-    return (tr.cells?.[1]?.innerText || '').trim();
-  };
-  const data = rows.map(tr => ({ tr, name: takeName(tr) }));
+  if (table && searchBox) {
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const takeName = (tr) => {
+      const inp = tr.querySelector('input[name="tenCuocThi"]');
+      if (inp && inp.value) return inp.value.trim();
+      return (tr.cells?.[1]?.innerText || '').trim();
+    };
+    const data = rows.map(tr => ({ tr, name: takeName(tr) }));
 
-  // Lọc bảng
-  function applyFilter(q) {
-    const k = vnNorm(q);
-    data.forEach(({ tr, name }) => {
-      tr.style.display = (!k || vnNorm(name).includes(k)) ? '' : 'none';
+    // Lọc bảng
+    function applyFilter(q) {
+      const k = vnNorm(q);
+      data.forEach(({ tr, name }) => {
+        tr.style.display = (!k || vnNorm(name).includes(k)) ? '' : 'none';
+      });
+    }
+
+    // ----- Dropdown gợi ý -----
+    let activeIdx = -1;
+    let itemEls = [];
+
+    function closeList() {
+      if (!suggList) return;
+      suggList.style.display = 'none';
+      suggList.innerHTML = '';
+      activeIdx = -1;
+      itemEls = [];
+    }
+    function openList() {
+      if (!suggList) return;
+      suggList.style.display = 'block';
+    }
+    function highlightFrag(text, q) {
+      const tN = vnNorm(text), qN = vnNorm(q);
+      const i = tN.indexOf(qN);
+      if (i < 0 || !q) return text;
+      return text.slice(0, i) + '<strong>' + text.slice(i, i + q.length) + '</strong>' + text.slice(i + q.length);
+    }
+    function renderList(q) {
+      if (!suggList) return;
+      const k = vnNorm(q);
+      const matches = !k ? [] : data.filter(x => vnNorm(x.name).includes(k)).slice(0, 8);
+      if (!matches.length) {
+        suggList.innerHTML = `<div class="sugg-empty">Không có gợi ý phù hợp</div>`;
+        openList(); activeIdx = -1; itemEls = []; return;
+      }
+      suggList.innerHTML = matches.map((m, i) => {
+        const statusEl = m.tr.querySelector('[data-status]');
+        const status = statusEl ? (statusEl.dataset.status || '') :
+                      (m.tr.textContent.includes('Đang bật') ? 'Bật' :
+                      m.tr.textContent.includes('Đang tắt') ? 'Tắt' : '');
+        return `
+          <div class="sugg-item" data-idx="${i}">
+            <span class="sugg-badge"></span>
+            <div class="sugg-name">${highlightFrag(m.name, q)}</div>
+            <div class="sugg-status">${status}</div>
+          </div>`;
+      }).join('');
+      itemEls = Array.from(suggList.querySelectorAll('.sugg-item'));
+      activeIdx = -1;
+      openList();
+      itemEls.forEach(el => {
+        el.addEventListener('click', () => {
+          const i = Number(el.dataset.idx);
+          const name = matches[i].name;
+          searchBox.value = name;
+          applyFilter(name);
+          closeList();
+          searchBox.focus();
+        });
+      });
+    }
+
+    // Gõ: mở gợi ý + lọc realtime
+    let t;
+    searchBox.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const v = searchBox.value;
+        if (!v.trim()) { closeList(); applyFilter(''); return; }
+        renderList(v);
+        applyFilter(v);
+      }, 60);
+    });
+
+    // Điều hướng: ↑/↓/Enter/Esc
+    searchBox.addEventListener('keydown', (e) => {
+      if (!suggList || suggList.style.display !== 'block') {
+        if (e.key === 'Enter') applyFilter(searchBox.value);
+        return;
+      }
+      if (!itemEls.length) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIdx = (activeIdx + 1) % itemEls.length;
+        itemEls.forEach((el,i)=>el.classList.toggle('is-active', i===activeIdx));
+        itemEls[activeIdx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIdx = (activeIdx - 1 + itemEls.length) % itemEls.length;
+        itemEls.forEach((el,i)=>el.classList.toggle('is-active', i===activeIdx));
+        itemEls[activeIdx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeIdx >= 0) itemEls[activeIdx].click();
+        else { applyFilter(searchBox.value); closeList(); }
+      } else if (e.key === 'Escape') {
+        closeList();
+      }
+    });
+
+    // Click ngoài để đóng
+    document.addEventListener('click', (e) => {
+      if (suggList && !suggList.contains(e.target) && e.target !== searchBox) closeList();
     });
   }
+  const viewModal   = document.getElementById('tpl-view-modal');
+  const viewContent = document.getElementById('tplv-content');
+  const viewClose   = document.getElementById('tplv-close');
 
-  // ----- Dropdown gợi ý -----
-  let activeIdx = -1;
-  let itemEls = [];
+  if (viewModal && viewContent) {
+    document.body.addEventListener('click', function (e) {
+      const btn = e.target.closest?.('[data-open-tpl-view]');
+      if (!btn) return;
 
-  function closeList() {
-    if (!suggList) return;
-    suggList.style.display = 'none';
-    suggList.innerHTML = '';
-    activeIdx = -1;
-    itemEls = [];
+      const targetId = btn.getAttribute('data-target');
+      const src = document.getElementById(targetId);
+      if (!src) return;
+
+      // copy HTML vào modal
+      viewContent.innerHTML = src.innerHTML;
+  // ===== Làm sạch nội dung bảng trong popup =====
+  const rows = viewContent.querySelectorAll('tbody tr');
+
+  function stripCodes(txt) {
+    // Bỏ tiền tố "BT123 - ", "VT02 - " ở bất kỳ vị trí nào
+    txt = txt.replace(/\b(?:BT|VT)\d+\s*-\s*/gi, '');
+    // Bỏ số trong ngoặc vuông: [1], [ 2 ], [10]
+    txt = txt.replace(/\[\s*\d+\s*\]\s*/g, '');
+    // Gộp dấu cách/thanh nối thừa
+    txt = txt.replace(/\s*[-–—]\s*/g, ' - ');
+    txt = txt.replace(/\s{2,}/g, ' ').trim();
+    // Bỏ " - " ở đầu/cuối nếu lỡ dư
+    txt = txt.replace(/^-\s+/, '').replace(/\s+-$/, '').trim();
+    return txt;
   }
-  function openList() {
-    if (!suggList) return;
-    suggList.style.display = 'block';
-  }
-  function highlightFrag(text, q) {
-    const tN = vnNorm(text), qN = vnNorm(q);
-    const i = tN.indexOf(qN);
-    if (i < 0 || !q) return text;
-    return text.slice(0, i) + '<strong>' + text.slice(i, i + q.length) + '</strong>' + text.slice(i + q.length);
-  }
-  function renderList(q) {
-    if (!suggList) return;
-    const k = vnNorm(q);
-    const matches = !k ? [] : data.filter(x => vnNorm(x.name).includes(k)).slice(0, 8);
-    if (!matches.length) {
-      suggList.innerHTML = `<div class="sugg-empty">Không có gợi ý phù hợp</div>`;
-      openList(); activeIdx = -1; itemEls = []; return;
+
+  rows.forEach(tr => {
+    const tdSection = tr.cells?.[0];
+    const tdItem    = tr.cells?.[1];
+
+    if (!tdSection || !tdItem) return;
+
+    // Làm sạch chung
+    let s = stripCodes(tdSection.textContent || '');
+    let i = stripCodes(tdItem.textContent || '');
+
+    // Bỏ phần lặp "Mục lớn" trong "Mục nhỏ" nhưng KHÔNG để trống "Mục nhỏ"
+    const sLower = s.toLowerCase();
+    let iLower = i.toLowerCase();
+
+    if (sLower) {
+      // Các phân cách thường gặp sau phần lặp
+      const seps = [' - ', ' — ', ': ', ' – ', ' —', '-', ':'];
+      let trimmed = false;
+
+      for (const sep of seps) {
+        const prefix = sLower + sep.toLowerCase();
+        if (iLower.startsWith(prefix)) {
+          const rest = i.slice(prefix.length).trim();
+          if (rest) {            // chỉ cắt khi có phần dư
+            i = rest;
+            iLower = i.toLowerCase();
+            trimmed = true;
+          }
+          break;                  // gặp 1 sep là dừng
+        }
+      }
+
+      // Nếu chưa cắt bằng sep, xem trường hợp i bắt đầu đúng bằng s (không có sep)
+      if (!trimmed && iLower.startsWith(sLower) && iLower.length > sLower.length) {
+        const rest = i.slice(s.length).replace(/^[-–—:]\s*/, '').trim();
+        if (rest) i = rest;      // chỉ nhận nếu còn nội dung
+      }
     }
-    suggList.innerHTML = matches.map((m, i) => {
-      const statusEl = m.tr.querySelector('[data-status]');
-      const status = statusEl ? (statusEl.dataset.status || '') :
-                    (m.tr.textContent.includes('Đang bật') ? 'Bật' :
-                     m.tr.textContent.includes('Đang tắt') ? 'Tắt' : '');
-      return `
-        <div class="sugg-item" data-idx="${i}">
-          <span class="sugg-badge"></span>
-          <div class="sugg-name">${highlightFrag(m.name, q)}</div>
-          <div class="sugg-status">${status}</div>
-        </div>`;
-    }).join('');
-    itemEls = Array.from(suggList.querySelectorAll('.sugg-item'));
-    activeIdx = -1;
-    openList();
-    itemEls.forEach(el => {
-      el.addEventListener('click', () => {
-        const i = Number(el.dataset.idx);
-        const name = matches[i].name;
-        searchBox.value = name;
-        applyFilter(name);
-        closeList();
-        searchBox.focus();
+
+    // Nếu vì bất kỳ lý do gì i rỗng → giữ nguyên như s để "Mục nhỏ" không bị trống
+    if (!i) {
+      i = s;
+    }
+
+    // Gán lại text đã làm sạch
+    tdSection.textContent = s;
+    tdItem.textContent    = i;
+
+  });
+
+
+      // mở modal
+      viewModal.style.display = 'flex';
+    });
+
+    viewClose?.addEventListener('click', () => viewModal.style.display = 'none');
+    viewModal.addEventListener('click', (e) => {
+      if (e.target === viewModal) viewModal.style.display = 'none';
+    });
+  } else {
+    console.warn('[tpl-view] modal elements not found');
+  }
+
+    console.log('[organize] JS ready');
+  const $modal  = document.getElementById('confirmModal');
+  const $msg    = document.getElementById('confirmMessage');
+  const $ok     = document.getElementById('confirmOk');
+  const $cancel = document.getElementById('confirmCancel');
+
+  if ($modal && $msg && $ok && $cancel) {
+    let onOk = null, onCancel = null;
+
+    function openConfirm(message, _onOk, _onCancel) {
+      $msg.textContent = message;
+      onOk = _onOk; onCancel = _onCancel || null;
+      $modal.style.display = 'flex';
+    }
+    function closeConfirm() {
+      $modal.style.display = 'none';
+      onOk = null; onCancel = null;
+    }
+    $ok.addEventListener('click', () => { if (onOk) onOk(); closeConfirm(); });
+    $cancel.addEventListener('click', () => { if (onCancel) onCancel(); closeConfirm(); });
+    $modal.addEventListener('click', (e) => {
+      if (e.target === $modal) { if (onCancel) onCancel(); closeConfirm(); }
+    });
+
+    // 1) Đổi tên
+  // ===== XÁC NHẬN CHỈ CHO FORM CẬP NHẬT (trong bảng) =====
+  document.querySelectorAll('form.js-update-form input[name="tenCuocThi"]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const form = e.target.closest('form.js-update-form');
+      const init = e.target.dataset.init || '';
+      const now  = e.target.value.trim();
+      if (now === init) return;
+      openConfirm(`Đổi tên cuộc thi từ “${init}” → “${now}”?`,
+        () => form.submit(),
+        () => { e.target.value = init; }
+      );
+    });
+  });
+
+  document.querySelectorAll('form.js-update-form input[name="trangThai"]').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const form = e.target.closest('form.js-update-form');
+      const init = (e.target.dataset.init === '1');
+      const now  = e.target.checked;
+      if (now === init) return;
+      openConfirm(`Xác nhận ${now ? 'BẬT' : 'TẮT'} cuộc thi này?`,
+        () => form.submit(),
+        () => { e.target.checked = init; }
+      );
+    });
+  });
+
+  // ===== FORM TẠO MỚI: CHỈ HỎI XÁC NHẬN KHI BẤM NÚT "TẠO" =====
+  const createForm = document.getElementById('create-form');
+  if (createForm) {
+    let allowSubmit = false;
+    createForm.addEventListener('submit', function (e) {
+      if (allowSubmit) return;            // lần 2: cho qua
+      e.preventDefault();                 // chặn submit lần đầu để mở popup
+      const ten = (createForm.querySelector('input[name="tenCuocThi"]')?.value || '').trim();
+      const on  = createForm.querySelector('input[name="trangThai"]')?.checked;
+      const msg = `Tạo cuộc thi “${ten || '(không tên)'}”${on ? ' (BẬT ngay)' : ''}?`;
+      openConfirm(msg, () => {
+        allowSubmit = true;               // bật cờ để submit thật
+        createForm.submit();
       });
     });
   }
 
-  // Gõ: mở gợi ý + lọc realtime
-  let t;
-  searchBox.addEventListener('input', () => {
-    clearTimeout(t);
-    t = setTimeout(() => {
-      const v = searchBox.value;
-      if (!v.trim()) { closeList(); applyFilter(''); return; }
-      renderList(v);
-      applyFilter(v);
-    }, 60);
-  });
 
-  // Điều hướng: ↑/↓/Enter/Esc
-  searchBox.addEventListener('keydown', (e) => {
-    if (!suggList || suggList.style.display !== 'block') {
-      if (e.key === 'Enter') applyFilter(searchBox.value);
-      return;
-    }
-    if (!itemEls.length) return;
+    // tuỳ chọn: expose nếu muốn gọi tay trong console
+    window.openConfirm = openConfirm;
+  } else {
+    console.warn('[confirm] modal elements not found');
+  }
 
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      activeIdx = (activeIdx + 1) % itemEls.length;
-      itemEls.forEach((el,i)=>el.classList.toggle('is-active', i===activeIdx));
-      itemEls[activeIdx].scrollIntoView({ block: 'nearest' });
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeIdx = (activeIdx - 1 + itemEls.length) % itemEls.length;
-      itemEls.forEach((el,i)=>el.classList.toggle('is-active', i===activeIdx));
-      itemEls[activeIdx].scrollIntoView({ block: 'nearest' });
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (activeIdx >= 0) itemEls[activeIdx].click();
-      else { applyFilter(searchBox.value); closeList(); }
-    } else if (e.key === 'Escape') {
-      closeList();
-    }
-  });
+  // === Client-side validate cho form "Thêm bài" (không reload khi thiếu giám khảo) ===
+  (function initCreateBtValidation() {
+    // quét tất cả form có action=create_bt
+    document.querySelectorAll('form').forEach(function (f) {
+      const act = f.querySelector('input[name="action"]')?.value;
+      if (act !== 'create_bt') return;
 
-  // Click ngoài để đóng
-  document.addEventListener('click', (e) => {
-    if (suggList && !suggList.contains(e.target) && e.target !== searchBox) closeList();
-  });
-}
-const viewModal   = document.getElementById('tpl-view-modal');
-const viewContent = document.getElementById('tplv-content');
-const viewClose   = document.getElementById('tplv-close');
+      const judgeSel = f.querySelector('select[name="judge_id"]');
+      const methodSel = f.querySelector('select[name="phuongThucCham"]');
+      const maxInput  = f.querySelector('input[name="cachChamDiem"]');
 
-if (viewModal && viewContent) {
-  document.body.addEventListener('click', function (e) {
-    const btn = e.target.closest?.('[data-open-tpl-view]');
-    if (!btn) return;
-
-    const targetId = btn.getAttribute('data-target');
-    const src = document.getElementById(targetId);
-    if (!src) return;
-
-    // copy HTML vào modal
-    viewContent.innerHTML = src.innerHTML;
-// ===== Làm sạch nội dung bảng trong popup =====
-const rows = viewContent.querySelectorAll('tbody tr');
-
-function stripCodes(txt) {
-  // Bỏ tiền tố "BT123 - ", "VT02 - " ở bất kỳ vị trí nào
-  txt = txt.replace(/\b(?:BT|VT)\d+\s*-\s*/gi, '');
-  // Bỏ số trong ngoặc vuông: [1], [ 2 ], [10]
-  txt = txt.replace(/\[\s*\d+\s*\]\s*/g, '');
-  // Gộp dấu cách/thanh nối thừa
-  txt = txt.replace(/\s*[-–—]\s*/g, ' - ');
-  txt = txt.replace(/\s{2,}/g, ' ').trim();
-  // Bỏ " - " ở đầu/cuối nếu lỡ dư
-  txt = txt.replace(/^-\s+/, '').replace(/\s+-$/, '').trim();
-  return txt;
-}
-
-rows.forEach(tr => {
-  const tdSection = tr.cells?.[0];
-  const tdItem    = tr.cells?.[1];
-
-  if (!tdSection || !tdItem) return;
-
-  // Làm sạch chung
-  let s = stripCodes(tdSection.textContent || '');
-  let i = stripCodes(tdItem.textContent || '');
-
-  // Bỏ phần lặp "Mục lớn" trong "Mục nhỏ" nhưng KHÔNG để trống "Mục nhỏ"
-  const sLower = s.toLowerCase();
-  let iLower = i.toLowerCase();
-
-  if (sLower) {
-    // Các phân cách thường gặp sau phần lặp
-    const seps = [' - ', ' — ', ': ', ' – ', ' —', '-', ':'];
-    let trimmed = false;
-
-    for (const sep of seps) {
-      const prefix = sLower + sep.toLowerCase();
-      if (iLower.startsWith(prefix)) {
-        const rest = i.slice(prefix.length).trim();
-        if (rest) {            // chỉ cắt khi có phần dư
-          i = rest;
-          iLower = i.toLowerCase();
-          trimmed = true;
-        }
-        break;                  // gặp 1 sep là dừng
+      function clearError(el) {
+        if (!el) return;
+        el.classList.remove('is-invalid');
+        const tip = el.parentElement.querySelector('.error-tip');
+        if (tip) tip.remove();
+        el.setAttribute('aria-invalid', 'false');
       }
-    }
+      function addError(el, msg) {
+        if (!el) return;
+        clearError(el);
+        el.classList.add('is-invalid');
+        el.setAttribute('aria-invalid', 'true');
+        const tip = document.createElement('span');
+        tip.className = 'error-tip';
+        tip.textContent = msg;
+        (el.parentElement || el).appendChild(tip);
+        el.focus();
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
 
-    // Nếu chưa cắt bằng sep, xem trường hợp i bắt đầu đúng bằng s (không có sep)
-    if (!trimmed && iLower.startsWith(sLower) && iLower.length > sLower.length) {
-      const rest = i.slice(s.length).replace(/^[-–—:]\s*/, '').trim();
-      if (rest) i = rest;      // chỉ nhận nếu còn nội dung
-    }
-  }
+      // gỡ lỗi khi người dùng thay đổi
+      ['change','input'].forEach(evt => {
+        judgeSel && judgeSel.addEventListener(evt, () => clearError(judgeSel));
+        maxInput && maxInput.addEventListener(evt, () => clearError(maxInput));
+        methodSel && methodSel.addEventListener(evt, () => clearError(maxInput));
+      });
 
-  // Nếu vì bất kỳ lý do gì i rỗng → giữ nguyên như s để "Mục nhỏ" không bị trống
-  if (!i) {
-    i = s;
-  }
+      f.addEventListener('submit', function (e) {
+        let hasErr = false;
 
-  // Gán lại text đã làm sạch
-  tdSection.textContent = s;
-  tdItem.textContent    = i;
+        // 1) bắt buộc có giám khảo
+        if (!judgeSel || !judgeSel.value) {
+          hasErr = true;
+          addError(judgeSel, 'Vui lòng chọn giám khảo chấm.');
+        }
 
-});
+        // 2) nếu là thang điểm thì bắt buộc nhập max điểm hợp lệ
+        if (methodSel && methodSel.value === 'POINTS') {
+          const v = (maxInput?.value || '').trim();
+          if (!v || isNaN(v) || Number(v) < 1) {
+            hasErr = true;
+            addError(maxInput, 'Nhập điểm tối đa (≥ 1).');
+          }
+        }
 
-
-    // mở modal
-    viewModal.style.display = 'flex';
-  });
-
-  viewClose?.addEventListener('click', () => viewModal.style.display = 'none');
-  viewModal.addEventListener('click', (e) => {
-    if (e.target === viewModal) viewModal.style.display = 'none';
-  });
-} else {
-  console.warn('[tpl-view] modal elements not found');
-}
-
-  console.log('[organize] JS ready');
-const $modal  = document.getElementById('confirmModal');
-const $msg    = document.getElementById('confirmMessage');
-const $ok     = document.getElementById('confirmOk');
-const $cancel = document.getElementById('confirmCancel');
-
-if ($modal && $msg && $ok && $cancel) {
-  let onOk = null, onCancel = null;
-
-  function openConfirm(message, _onOk, _onCancel) {
-    $msg.textContent = message;
-    onOk = _onOk; onCancel = _onCancel || null;
-    $modal.style.display = 'flex';
-  }
-  function closeConfirm() {
-    $modal.style.display = 'none';
-    onOk = null; onCancel = null;
-  }
-  $ok.addEventListener('click', () => { if (onOk) onOk(); closeConfirm(); });
-  $cancel.addEventListener('click', () => { if (onCancel) onCancel(); closeConfirm(); });
-  $modal.addEventListener('click', (e) => {
-    if (e.target === $modal) { if (onCancel) onCancel(); closeConfirm(); }
-  });
-
-  // 1) Đổi tên
-// ===== XÁC NHẬN CHỈ CHO FORM CẬP NHẬT (trong bảng) =====
-document.querySelectorAll('form.js-update-form input[name="tenCuocThi"]').forEach(input => {
-  input.addEventListener('change', (e) => {
-    const form = e.target.closest('form.js-update-form');
-    const init = e.target.dataset.init || '';
-    const now  = e.target.value.trim();
-    if (now === init) return;
-    openConfirm(`Đổi tên cuộc thi từ “${init}” → “${now}”?`,
-      () => form.submit(),
-      () => { e.target.value = init; }
-    );
-  });
-});
-
-document.querySelectorAll('form.js-update-form input[name="trangThai"]').forEach(chk => {
-  chk.addEventListener('change', (e) => {
-    const form = e.target.closest('form.js-update-form');
-    const init = (e.target.dataset.init === '1');
-    const now  = e.target.checked;
-    if (now === init) return;
-    openConfirm(`Xác nhận ${now ? 'BẬT' : 'TẮT'} cuộc thi này?`,
-      () => form.submit(),
-      () => { e.target.checked = init; }
-    );
-  });
-});
-
-// ===== FORM TẠO MỚI: CHỈ HỎI XÁC NHẬN KHI BẤM NÚT "TẠO" =====
-const createForm = document.getElementById('create-form');
-if (createForm) {
-  let allowSubmit = false;
-  createForm.addEventListener('submit', function (e) {
-    if (allowSubmit) return;            // lần 2: cho qua
-    e.preventDefault();                 // chặn submit lần đầu để mở popup
-    const ten = (createForm.querySelector('input[name="tenCuocThi"]')?.value || '').trim();
-    const on  = createForm.querySelector('input[name="trangThai"]')?.checked;
-    const msg = `Tạo cuộc thi “${ten || '(không tên)'}”${on ? ' (BẬT ngay)' : ''}?`;
-    openConfirm(msg, () => {
-      allowSubmit = true;               // bật cờ để submit thật
-      createForm.submit();
+        if (hasErr) {
+          e.preventDefault();   // ⛔ không submit → không reload
+          e.stopPropagation();
+        }
+      });
     });
-  });
-}
-
-
-  // tuỳ chọn: expose nếu muốn gọi tay trong console
-  window.openConfirm = openConfirm;
-} else {
-  console.warn('[confirm] modal elements not found');
-}
-
-
-
+  })();
 });

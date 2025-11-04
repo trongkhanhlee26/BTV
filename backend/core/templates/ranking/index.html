@@ -1,11 +1,10 @@
+{% extends "base.html" %}
 {% load static %}
+{% block title %}Xếp hạng{% endblock %}
 <!doctype html>
 <html lang="vi">
 
-<head>
-    <meta charset="utf-8" />
-    <title>{{ title }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+{% block head_extra %}
     <style>
         :root {
             --bg: #0b1020;
@@ -47,7 +46,7 @@
                 padding: 0 10px;
             }
 
-            .glass {
+            .panel {
                 padding: 10px;
             }
 
@@ -123,7 +122,7 @@
             font-size: 14px;
         }
 
-        .glass {
+        .panel {
             background: var(--panel);
             border: 1px solid var(--panel-brd);
             border-radius: 16px;
@@ -343,13 +342,13 @@
             color: var(--muted);
         }
     </style>
-</head>
+{% endblock %}
 
-<body>
+{% block content %}
     <div class="container">
         <h1>{{ title }}</h1>
 
-        <section class="glass">
+        <section class="panel">
             <form method="get" class="controls">
                 <label>Chọn cuộc thi:</label>
                 <select name="ct" onchange="this.form.submit()">
@@ -422,8 +421,4 @@
     </div>
 
     <script src="{% static 'core/ranking.js' %}?v={% now 'U' %}"></script>
-
-
-</body>
-
-</html>
+{% endblock %}

@@ -21,7 +21,7 @@ class ThiSinhAdmin(admin.ModelAdmin):
 
 @admin.register(GiamKhao)
 class GiamKhaoAdmin(admin.ModelAdmin):
-    list_display = ("maNV", "hoTen", "email")
+    list_display = ("maNV", "hoTen", "email", "role")
     search_fields = ("maNV", "hoTen")
     
 @admin.register(CuocThi)
@@ -39,9 +39,12 @@ class VongThiAdmin(admin.ModelAdmin):
 
 @admin.register(BaiThi)
 class BaiThiAdmin(admin.ModelAdmin):
-    list_display = ("ma", "tenBaiThi", "cachChamDiem", "vongThi")
+    list_display = ("ma", "tenBaiThi", "cachChamDiem", "vongThi", "giam_khao")
     search_fields = ("maBaiThi", "tenBaiThi")
     list_filter = ("vongThi",)
+
+    def giam_khao(self, obj):
+        return ", ".join([gk.giamKhao.hoTen for gk in obj.giam_khao_duoc_chi_dinh.all()])
 
 @admin.register(PhieuChamDiem)
 class PhieuChamDiemAdmin(admin.ModelAdmin):

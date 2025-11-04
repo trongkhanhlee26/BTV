@@ -14,6 +14,7 @@
   
             --txt: #e5e7eb;
             --brand: #f59e0b;
+            --muted: #cbd5e1;
         }
 
         body {
@@ -80,12 +81,32 @@
 
         .row input,
         .row select {
-            background: #0b1220;
+            background: #0b122072;
             color: var(--txt);
             border: 1px solid #243045;
             border-radius: 8px;
             padding: 8px 10px;
             outline: none
+        }
+
+        .row select:hover,
+        .row input:hover {
+        border-color: #3b4a6a;
+        }
+
+        .row select:focus,
+        .row input:focus {
+        border-color: #6ea8ff;
+        box-shadow: 0 0 0 3px rgba(110,168,255,0.25);
+        }
+        
+        .row input::placeholder {
+            color: rgba(229,231,235,0.70);   
+        }
+
+        .row input:disabled,
+        .row select:disabled {
+            opacity: .75;
         }
 
         .row label {
@@ -346,8 +367,20 @@
         cursor: pointer;
     }
     .download-link:hover {
-        color: #0056b3; 
+        color: #167fef; 
     }
+/* NEW: highlight khi lỗi */
+.is-invalid {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239,68,68,.18);
+}
+
+/* NEW: tip lỗi nhỏ cạnh field */
+.error-tip {
+  font-size: 12px;
+  color: #fca5a5;
+  margin-left: 8px;
+}
 
     </style>
 {% endblock %}
@@ -378,7 +411,6 @@
                 {% for ct in cuoc_this %}
                 <div class="ct">
                     <div>
-                        <span class="code">{{ ct.ma }}</span>
                         &nbsp;{{ ct.tenCuocThi }}
                         &nbsp;<span class="status {{ ct.trangThai|yesno:'on,off' }}">
                             {{ ct.trangThai|yesno:"Đang bật,Đang tắt" }}
@@ -411,34 +443,70 @@
 
                     {% for vt in ct.vong_thi.all %}
                     <div class="vt">
-                        <div><span class="code">{{ vt.ma }}</span> {{ vt.tenVongThi }}</div>
+                        <div>{{ vt.tenVongThi }}</div>
 
                         <!-- Form thêm Bài thi cho Vòng này -->
                         <form method="post" class="row" style="margin-top:8px;align-items:center;gap:10px">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="create_bt">
                             <input type="hidden" name="vongThi_id" value="{{ vt.id }}">
-                            <label>Thêm bài thi</label>
-                            <input type="text" name="tenBaiThi" placeholder="VD: Lý thuyết" required>
-                            <label>Phương thức chấm</label>
-                            <select name="phuongThucCham">
-                                <option value="TIME">Chấm theo thời gian</option>
-                                <option value="TEMPLATE">Chấm theo mẫu</option>
-                                <option value="POINTS" selected>Chấm theo thang điểm</option>
-                            </select>
-                            <label class="js-max-label">Điểm tối đa</label>
-                            <input type="number" name="cachChamDiem" min="1" step="1" placeholder="VD: 10"
-                                class="js-max-input" style="width:100px">
-                            <label class="js-file-template">Mẫu chấm thi: 
-                                <a class="download-link" href="{% static 'files/mẫu chấm thi.xlsx' %}" download>file_mẫu_thí_sinh.xlsx</a>
-                            </label>
-                            <button class="btn" type="submit">Thêm bài</button>
+                            <div class="card add-bt" style="position:relative; display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:8px; margin: 8px 0 8px; width: calc(100% - 24px);">
+                                <!-- Hàng chính chia làm 2 cột: trái & phải -->
+                                <div class="row" style="
+                                display: flex;
+                                justify-content: flex-start;
+                                align-items: flex-start;
+                                gap: 100px;        
+                                flex-wrap: wrap;
+                                ">
+
+                                <!-- Cột trái: Thêm bài thi + Giám khảo -->
+                                <div style="display: flex; flex-direction: column; gap: 12px; min-width: 280px;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                    <label>Thêm bài thi</label>
+                                    <input type="text" name="tenBaiThi" placeholder="VD: Lý thuyết" required style="min-width: 225px;">
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                    <label>Giám khảo chấm</label>
+                                    <select name="judge_id" style="min-width: 180px;">
+                                        <option value="">— Chọn giám khảo —</option>
+                                        {% for gk in judges %}
+                                        <option value="{{ gk.maNV }}">{{ gk.hoTen }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    </div>
+                                </div>
+
+                                <!-- Cột phải: Phương thức chấm + cấu hình -->
+                                <div style="display: flex; flex-direction: column; gap: 12px; min-width: 280px;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                    <label>Phương thức chấm</label>
+                                    <select name="phuongThucCham" class="js-method" style="min-width: 220px;">
+                                        <option value="TIME">Chấm theo thời gian</option>
+                                        <option value="TEMPLATE">Chấm theo mẫu</option>
+                                        <option value="POINTS" selected>Chấm theo thang điểm</option>
+                                    </select>
+                                    </div>
+
+                                    <div class="js-method-extra" style="display: flex; align-items: center; gap: 10px;">
+                                    <label class="js-max-label" style="display:none;">Điểm tối đa</label>
+                                    <input class="js-max-input" type="number" name="cachChamDiem" min="1" step="1" placeholder="VD: 10" style="display:none; width:100px;">
+                                    <label class="js-file-template" style="display:none;">Mẫu chấm thi:
+                                        <a class="download-link" href="{% static 'files/mẫu chấm thi.xlsx' %}" download>file_mẫu_thí_sinh.xlsx</a>
+                                    </label>
+                                    </div>
+                                </div>
+                                </div>
+
+                                <!-- Nút ở góc phải dưới -->
+                                <button class="btn" type="submit" style="position:absolute; right:12px; bottom:12px;">Thêm bài</button>
+                            </div>
                         </form>
 
                         {% for bt in vt.bai_thi.all %}
                         <div class="bt">
                             <div>
-                                <span class="code">{{ bt.ma }}</span>
                                 {{ bt.tenBaiThi }}
                                 {% if bt.phuongThucCham == "POINTS" %}
                                 — Thang điểm (Max: {{ bt.cachChamDiem }})
@@ -479,12 +547,7 @@
 
                                    {# Nội dung bảng chi tiết render sẵn (ẩn), khi bấm sẽ copy vào popup #}
                                    <div id="tplview-{{ bt.id }}" style="display:none">
-                                     <div style="margin-bottom:8px">
-                                       <span class="code">{{ vt.ma }}</span> {{ vt.tenVongThi }}
-                                       &nbsp;•&nbsp;
-                                       <span class="code">{{ bt.ma }}</span> {{ bt.tenBaiThi }}
-                                     </div>
-
+                                     <div style="margin-bottom:8px"> {{ vt.tenVongThi }} &nbsp;•&nbsp; {{ bt.tenBaiThi }}</div>
                                      <table class="table" style="width:100%;">
                                        <thead>
                                          <tr>

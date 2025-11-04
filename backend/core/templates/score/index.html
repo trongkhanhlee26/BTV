@@ -510,7 +510,7 @@
           <label>Vòng thi:</label>
           <div class="select-wrap">
             <select id="vtSelect" name="vt" class="input" {% if not rounds or rounds|length == 0 %}disabled{% endif %}>
-              <option value="">— Tất cả —</option>
+              <option value="">— Chọn vòng thi —</option>
               {% for v in rounds %}
                 <option value="{{ v.id }}" {% if selected_vt_id and v.id == selected_vt_id %}selected{% endif %}>
                   {{ v.tenVongThi }}
@@ -525,7 +525,7 @@
           <label>Bài thi:</label>
           <div class="select-wrap">
             <select id="btSelect" name="bt" class="input" {% if not tests or tests|length == 0 %}disabled{% endif %}>
-              <option value="">— Tất cả —</option>
+              <option value="">— Chọn bài thi —</option>
               {% for b in tests %}
                 <option value="{{ b.id }}" {% if selected_bt_id and b.id == selected_bt_id %}selected{% endif %}>
                   {{ b.ma }} — {{ b.tenBaiThi }}
@@ -621,8 +621,10 @@
                         data-btid="{{ b.id }}" data-bcode="{{ b.code|escapejs }}">
                   Chấm theo mẫu
                 </button>
-                <span id="preview-total-{{ b.id }}" class="ml-2 muted">Chưa chấm</span>
-                <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" data-max="{{ b.max }}" value="">
+                <span id="preview-total-{{ b.id }}" class="ml-2 muted">
+                  {% if b.current != None %}Tổng: {{ b.current|floatformat:0 }}{% else %}Chưa chấm{% endif %}
+                </span>
+                <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" data-max="{{ b.max }}" value = "{% if b.current != None %}{{ b.current|floatformat:0 }}{% endif %}>
                 <input type="hidden" name="tpl_time_{{ b.id }}" id="tpl-time-{{ b.id }}" value="">
               </div>
               {% else %}
