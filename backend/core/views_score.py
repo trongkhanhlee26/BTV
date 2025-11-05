@@ -61,6 +61,15 @@ def _current_judge(request):
             gk = GiamKhao.objects.filter(maNV__iexact=username).first()
             if gk:
                 return gk
+        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+            gk = (
+                GiamKhao.objects.filter(role="ADMIN")
+                .filter(Q(email__iexact=email) | Q(maNV__iexact=username))
+                .first()
+                or GiamKhao.objects.filter(role="ADMIN").order_by("maNV").first()
+            )
+            if gk:
+                return gk
 
     # 3) Không tìm thấy -> để view xử lý (401)
     return None
@@ -503,7 +512,7 @@ def score_view(request):
         vt_qs = VongThi.objects.filter(cuocThi=ct).order_by("id")
         rounds = []
         for vt in vt_qs:
-           if _assigned_bai_qs(ct, judge_for_render, vt=vt).exists():
+           if _judge_is_admin(judge_for_render) or _assigned_bai_qs(ct, judge_for_render, vt=vt).exists():
                 rounds.append({"id": vt.id, "tenVongThi": vt.tenVongThi})
         if vt_param:
             selected_vt = VongThi.objects.filter(cuocThi=ct, id=vt_param).first()
@@ -546,7 +555,7 @@ def score_view(request):
                          .order_by("id"))
                 rounds = []
                 for vt in vt_qs:
-                    if _assigned_bai_qs(ct_obj, judge, vt=vt).exists():
+                    if _judge_is_admin(judge) or _assigned_bai_qs(ct_obj, judge, vt=vt).exists():
                         rounds.append({"id": vt.id, "tenVongThi": vt.tenVongThi})
                 data["rounds"] = rounds
 
