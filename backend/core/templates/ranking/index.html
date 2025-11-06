@@ -1,6 +1,5 @@
-{% extends "base.html" %}
+
 {% load static %}
-{% block title %}Xếp hạng{% endblock %}
 <!doctype html>
 <html lang="vi">
 
@@ -423,7 +422,7 @@ td.num { font-weight: 600; }
 
             <div class="table-wrap">
                 <!-- thêm data-col-group-size để config số cột bài thi/nhóm -->
-                <table class="rank-table" id="rankTable" data-page-size="10" data-interval-ms="3000"
+                <table class="rank-table" id="rankTable" data-page-size="10" data-interval-ms="5000"
                     data-col-group-size="5">
 <thead>
   <!-- Hàng 1: Vòng thi (gộp 4 cột cố định + Tổng bằng rowspan=2) -->
@@ -465,32 +464,29 @@ td.num { font-weight: 600; }
   </tr>
 </thead>
 
-                    <tbody id="rankBody">
-                    {% for r in rows %}
-                    <tr class="{% if forloop.counter <= 3 %}rank-{{ forloop.counter }} top--{{ forloop.counter }}{% endif %}">
-                        <td class="col-rank">{{ forloop.counter }}</td>
-                        <td>{{ r.maNV }}</td>
-                        <td>{{ r.hoTen }}</td>
-                        <td>{{ r.donVi }}</td>
+<tbody id="rankBody">
+{% for r in rows %}
+<tr class="{% if forloop.counter <= 3 %}rank-{{ forloop.counter }} top--{{ forloop.counter }}{% endif %}">
+  <td class="col-rank">{{ forloop.counter }}</td>
+  <td>{{ r.maNV }}</td>
+  <td>{{ r.hoTen }}</td>
+  <td>{{ r.donVi }}</td>
 
-                        {# Điểm từng bài: theo thứ tự groups/tests (khớp với t.col_index) #}
-                        {% for score in r.scores %}
-                        <td class="num col-test" data-kind="test">{{ score|floatformat:0 }}</td>
-                        {% endfor %}
+  {# MỚI: duyệt từng Vòng, in các bài của Vòng rồi in Tổng Vòng ngay sau đó #}
+  {% for gv in r.groups_view %}
+    {% for s in gv.scores %}
+      <td class="num col-test" data-kind="test">{{ s|floatformat:0 }}</td>
+    {% endfor %}
+    <td class="num col-group-total" data-kind="group-total" style="display:none;">
+      {{ gv.total|floatformat:0 }}
+    </td>
+  {% endfor %}
 
-                        {# Tổng theo VÒNG: ẩn mặc định, chỉ hiện khi gộp #}
-                        {% for gsum in r.group_totals %}
-                        <td class="num col-group-total" data-kind="group-total" style="display:none;">{{ gsum|floatformat:2 }}</td>
-                        {% endfor %}
+  <td class="total num">{{ r.total|floatformat:0 }}</td>
+</tr>
+{% endfor %}
+</tbody>
 
-                        <td class="total num">{{ r.total|floatformat:0}}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="{{ groups|length|add:'5' }}" class="subtitle">Chưa có thí sinh phù hợp.</td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
 
                 </table>
             </div>
