@@ -67,6 +67,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # expose judge/session role info to templates
+                'core.context_processors.judge_info',
             ],
         },
     },

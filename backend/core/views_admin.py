@@ -170,15 +170,25 @@ def import_view(request):
                         skipped += 1
                         continue
 
+                    # Required
+                    hoTen = (r.get("hoTen", "") or "").strip()
+
+                    # Optional fields: convert empty string -> None so DB stores NULL (avoids unique '' collisions on email)
+                    chiNhanh = (r.get("chiNhanh", "") or "").strip() or None
+                    vung = (r.get("vung", "") or "").strip() or None
+                    donVi = (r.get("donVi", "") or "").strip() or None
+                    email = (r.get("email", "") or "").strip() or None
+                    nhom = (r.get("nhom", "") or "").strip() or None
+
                     obj, is_created = ThiSinh.objects.update_or_create(
                         pk=ma,
                         defaults=dict(
-                            hoTen=r.get("hoTen", "").strip(),
-                            chiNhanh=r.get("chiNhanh", "").strip(),
-                            vung=r.get("vung", "").strip(),
-                            donVi=r.get("donVi", "").strip(),
-                            email=r.get("email", "").strip(),
-                            nhom=r.get("nhom", "").strip(),
+                            hoTen=hoTen,
+                            chiNhanh=chiNhanh,
+                            vung=vung,
+                            donVi=donVi,
+                            email=email,
+                            nhom=nhom,
                         ),
                     )
 
@@ -199,11 +209,13 @@ def import_view(request):
                     if not ma:
                         skipped += 1
                         continue
+                    # Ensure imported judges default to role 'JUDGE' when created/updated
                     obj, is_created = GiamKhao.objects.update_or_create(
                         pk=ma,
                         defaults=dict(
                             hoTen=r["hoTen"],
                             email=r["email"],
+                            role="JUDGE",
                         )
                     )
                     created += int(is_created)
