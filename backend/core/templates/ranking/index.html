@@ -162,7 +162,11 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, .2);
         }
-
+th.col-test, th.col-group-total, td.num {
+  text-align: center !important;
+  vertical-align: middle;
+}
+td.num { font-weight: 600; }
         .badge {
             display: inline-block;
             padding: 2px 10px;
@@ -301,7 +305,7 @@
 
         .rank-table tbody tr.rank-2 td:nth-child(3)::before,
         .rank-table tbody tr.top--2 td:nth-child(3)::before {
-            color: #C0C0C0;
+            color: #e4e4e4;
         }
 
         .rank-table tbody tr.rank-3 td:nth-child(3)::before,
@@ -342,12 +346,59 @@
             font-size: 12px;
             color: var(--muted);
         }
+        /* Zebra cho các hạng ngoài Top 1/2/3: xen kẽ đậm/nhạt hơn một chút */
+.rank-table tbody tr:not(.top--1):not(.top--2):not(.top--3):nth-child(odd) {
+  background: rgba(255, 255, 255, 0.267);
+}
+.rank-table tbody tr:not(.top--1):not(.top--2):not(.top--3):nth-child(even) {
+  background: rgba(255, 255, 255, 0.122);
+}
+.page-header{
+  display:flex; align-items:center; gap:14px; 
+}
+
+.page-header{
+  display:flex;
+  flex-direction: column;      /* <-- xếp dọc: link trên, title dưới */
+  align-items: flex-start;     /* căn trái */
+  gap:6px;
+  margin-bottom: 10px;
+}
+
+.back-link{
+  display:inline-flex; align-items:center; gap:6px;
+  color:#fff;
+  font-weight:700;
+  font-size:18px;              /* to hơn xíu */
+  text-decoration: none !important;  /* bỏ gạch chân */
+  line-height: 1;
+}
+.back-link:hover{ text-decoration: underline; }
+
+.back-link svg{ width:18px; height:18px; }
+
+.page-title{ margin:0; font-size:20px; line-height:1.2; }
+
+
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h1>{{ title }}</h1>
+        
+<div class="page-header">
+  <a href="{% url 'home' %}" class="back-link" title="Về trang chủ">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Trang chủ
+  </a>
+
+  <h1 class="page-title">
+    Xếp hạng{% if selected_ct %} — {{ selected_ct.ma }} · {{ selected_ct.tenCuocThi }}{% endif %}
+  </h1>
+</div>
+
 
         <section class="glass">
             <form method="get" class="controls">
@@ -364,7 +415,7 @@
             {% if not selected_ct %}
             <p class="subtitle">Chưa có cuộc thi nào.</p>
             {% else %}
-            {% if not columns %}
+            {% if groups|length == 0 %}
             <p class="subtitle">Cuộc thi này chưa có bài thi.</p>
             {% else %}
             <div class="subtitle" style="margin-top:6px">
@@ -375,43 +426,73 @@
                 <!-- thêm data-col-group-size để config số cột bài thi/nhóm -->
                 <table class="rank-table" id="rankTable" data-page-size="10" data-interval-ms="3000"
                     data-col-group-size="5">
-                    <thead>
-                        <tr>
-                            <th class="col-rank">STT</th>
-                            <th>Mã NV</th>
-                            <th>Họ tên</th>
-                            <th>Đơn vị</th>
-                            {% for c in columns %}
-                            <th class="col-test">
-                                <div class="code">{{ c.code }}</div>
-                                <div>{{ c.title }}</div>
-                                <div class="subtitle">Max: {{ c.max }}</div>
-                            </th>
-                            {% endfor %}
-                            <th>Tổng / {{ total_max }}</th>
-                        </tr>
-                    </thead>
+<thead>
+  <!-- Hàng 1: Vòng thi (gộp 4 cột cố định + Tổng bằng rowspan=2) -->
+  <tr id="vtRow">
+    <th class="col-rank" rowspan="2">STT</th>
+    <th rowspan="2">Mã NV</th>
+    <th rowspan="2">Họ tên</th>
+    <th rowspan="2">Đơn vị</th>
+
+    {% for g in groups %}
+      <th class="vt-group"
+          data-group-index="{{ forloop.counter0 }}"
+          data-colspan="{{ g.tests|length }}"
+          colspan="{{ g.tests|length }}"
+          style="cursor:pointer;font-weight:800;">
+        {{ g.vong_name }}
+
+      </th>
+    {% endfor %}
+
+    <th rowspan="2">Tổng</th>
+  </tr>
+
+  <!-- Hàng 2: CHỈ các cột biến thiên (Bài thi + ô Tổng Vòng ẩn) -->
+  <tr id="btRow">
+    {% for g in groups %}
+      {% for t in g.tests %}
+        <th class="col-test"
+            data-group-index="{{ forloop.parentloop.counter0 }}"
+            data-test-index="{{ t.col_index }}">
+          
+          <div>{{ t.title }}</div>
+        </th>
+      {% endfor %}
+      <th class="col-group-total" data-group-index="{{ forloop.counter0 }}" style="display:none;">
+        <div>Tổng {{ g.vong_name }}</div>
+      </th>
+    {% endfor %}
+  </tr>
+</thead>
+
                     <tbody id="rankBody">
-                        {% for r in rows %}
-                        <tr
-                            class="{% if forloop.counter <= 3 %}rank-{{ forloop.counter }} top--{{ forloop.counter }}{% endif %}">
-                            <td class="col-rank">{{ forloop.counter }}</td>
-                            <td>{{ r.maNV }}</td>
-                            <td>{{ r.hoTen }}</td>
-                            <td>{{ r.donVi }}</td>
-                            {% for score in r.scores %}
-                            <td class="num col-test">{{ score|floatformat:2 }}</td>
-                            {% endfor %}
-                            <td class="total num">{{ r.total|floatformat:2 }} / {{ total_max }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="{{ columns|length|add:'5' }}" class="subtitle">
-                                Chưa có thí sinh phù hợp.
-                            </td>
-                        </tr>
+                    {% for r in rows %}
+                    <tr class="{% if forloop.counter <= 3 %}rank-{{ forloop.counter }} top--{{ forloop.counter }}{% endif %}">
+                        <td class="col-rank">{{ forloop.counter }}</td>
+                        <td>{{ r.maNV }}</td>
+                        <td>{{ r.hoTen }}</td>
+                        <td>{{ r.donVi }}</td>
+
+                        {# Điểm từng bài: theo thứ tự groups/tests (khớp với t.col_index) #}
+                        {% for score in r.scores %}
+                        <td class="num col-test" data-kind="test">{{ score|floatformat:0 }}</td>
                         {% endfor %}
+
+                        {# Tổng theo VÒNG: ẩn mặc định, chỉ hiện khi gộp #}
+                        {% for gsum in r.group_totals %}
+                        <td class="num col-group-total" data-kind="group-total" style="display:none;">{{ gsum|floatformat:2 }}</td>
+                        {% endfor %}
+
+                        <td class="total num">{{ r.total|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="{{ groups|length|add:'5' }}" class="subtitle">Chưa có thí sinh phù hợp.</td>
+                    </tr>
+                    {% endfor %}
                     </tbody>
+
                 </table>
             </div>
 

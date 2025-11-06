@@ -3,7 +3,6 @@ from django.db.models import Avg
 from .models import CuocThi, VongThi, BaiThi, ThiSinh, PhieuChamDiem
 from django.db.models import Q
 
-# Chuẩn hoá loại chấm để không phụ thuộc chữ hoa/thường/enum
 def _score_type(bt) -> str:
     v = getattr(bt, "phuongThucCham", None)
     if v is None:
@@ -14,102 +13,115 @@ def _score_type(bt) -> str:
     return "POINTS"
 
 def ranking_view(request):
-    # 1) Chọn cuộc thi (chỉ lấy cuộc thi đang bật)
     ct_id = request.GET.get("ct")
-    cuoc_this = CuocThi.objects.filter(trangThai=True).order_by("-id")  # chỉ ACTIVE
+    cuoc_this = CuocThi.objects.filter(trangThai=True).order_by("-id")
 
-    selected_ct = None
-    if ct_id:
-        # Nếu ct_id không phải ACTIVE thì bỏ qua
-        selected_ct = cuoc_this.filter(id=ct_id).first()
-    # fallback: lấy cái ACTIVE đầu tiên
-    if not selected_ct:
-        selected_ct = cuoc_this.first()
-
-
-    if not selected_ct:
+    # Nếu không có cuộc thi active -> trả trang rỗng
+    if not cuoc_this.exists():
         return render(request, "ranking/index.html", {
-            "cuoc_this": cuoc_this,
-            "selected_ct": None,
-            "columns": [],
-            "rows": [],
-            "total_max": 0,
+            "cuoc_this": cuoc_this, "selected_ct": None,
+            "groups": [], "rows": [], "total_max": 0,
             "title": "Xếp hạng theo Cuộc thi",
         })
 
-    # 2) Lấy tất cả bài trong cuộc thi (prefetch rule để tính Max cho TIME)
-    vt_ids = VongThi.objects.filter(cuocThi=selected_ct).values_list("id", flat=True)
-    bai_list = list(
-        BaiThi.objects
-        .filter(vongThi_id__in=vt_ids)
-        .select_related("vongThi")
-        .prefetch_related("time_rules")
+    # Có cuộc thi active: ưu tiên ct theo tham số; nếu không thấy thì fallback ct đầu tiên
+    selected_ct = cuoc_this.filter(id=ct_id).first() if ct_id else None
+    if selected_ct is None:
+        selected_ct = cuoc_this.first()
+
+    # 2) Lấy các vòng + bài của cuộc thi
+    vongs = list(VongThi.objects.filter(cuocThi=selected_ct).order_by("id"))
+    bai_list = (
+        BaiThi.objects.filter(vongThi__in=vongs)
+        .select_related("vongThi").prefetch_related("time_rules")
         .order_by("vongThi_id", "id")
     )
 
-    columns = []
-    for b in bai_list:
-        if _score_type(b) == "TIME":
-            rules = list(b.time_rules.all()) if hasattr(b, "time_rules") else []
-            b_max = max([r.score for r in rules], default=0)
-        else:
-            b_max = b.cachChamDiem
+    # Gom theo vòng
+    groups = []
+    group_index_by_vong = {}
+    running_test_index = 0
+    total_max = 0
 
-        columns.append({
-            "id": b.id,
-            "code": b.ma,
-            "title": f"{b.vongThi.tenVongThi} – {b.tenBaiThi}",
-            "max": b_max,
-        })
+    for vt in vongs:
+        tests = []
+        g_max = 0
+        for b in [x for x in bai_list if x.vongThi_id == vt.id]:
+            if _score_type(b) == "TIME":
+                rules = list(getattr(b, "time_rules", []).all()) if hasattr(b, "time_rules") else []
+                b_max = max([r.score for r in rules], default=0)
+            else:
+                b_max = b.cachChamDiem
+            tests.append({
+                "id": b.id,
+                "code": b.ma,
+                "title": b.tenBaiThi,
+                "max": b_max,
+                "col_index": running_test_index,  # vị trí cột (tính từ 0 trong phần bài thi)
+            })
+            running_test_index += 1
+            g_max += (b_max or 0)
 
-    total_max = sum(c["max"] for c in columns)
+        if tests:
+            group_index_by_vong[vt.id] = len(groups)
+            groups.append({
+                "vong_id": vt.id,
+                "vong_name": vt.tenVongThi,
+                "tests": tests,
+                "max": g_max,
+            })
+            total_max += g_max
 
-    # 3) Lấy điểm trung bình mỗi thí sinh – bài thi
-    scores_qs = (
+    # 3) Map điểm (thiSinh.maNV, baiThi_id) -> avg
+    all_test_ids = [t["id"] for g in groups for t in g["tests"]]
+    score_qs = (
         PhieuChamDiem.objects
-        .filter(cuocThi=selected_ct, baiThi_id__in=[b["id"] for b in columns])
+        .filter(cuocThi=selected_ct, baiThi_id__in=all_test_ids)
         .values("thiSinh__maNV", "baiThi_id")
         .annotate(avg=Avg("diem"))
     )
-    score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in scores_qs}
+    score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in score_qs}
 
-    # 4) Chỉ lấy thí sinh thuộc đúng cuộc thi đã chọn
-    #    (điều kiện: có ít nhất một phiếu chấm trong cuộc thi này)
-
-    ts_m2m = ThiSinh.objects.filter(cuocThi=selected_ct)  # dùng M2M đúng mô hình hiện tại
+    # 4) Lấy thí sinh thuộc cuộc thi (m2m + có phiếu chấm)
+    ts_m2m = ThiSinh.objects.filter(cuocThi=selected_ct)
     ts_scored = ThiSinh.objects.filter(phieuchamdiem__cuocThi=selected_ct)
-
     ts_qs = (
         ThiSinh.objects
         .filter(Q(pk__in=ts_m2m.values("pk")) | Q(pk__in=ts_scored.values("pk")))
-        .distinct()
-        .order_by("maNV")
+        .distinct().order_by("maNV")
     )
-
 
     rows = []
     for ts in ts_qs:
-        row_scores, total = [], 0.0
-        for col in columns:
-            val = score_map.get((ts.maNV, col["id"]), 0.0)
-            row_scores.append(val)
-            total += val
+        # điểm từng bài (flatten theo thứ tự groups/tests)
+        flat_scores = []
+        group_totals = []
+        total_sum = 0.0
+
+        for g in groups:
+            g_sum = 0.0
+            for t in g["tests"]:
+                val = score_map.get((ts.maNV, t["id"]), 0.0)
+                flat_scores.append(val)
+                g_sum += val
+            group_totals.append(g_sum)
+            total_sum += g_sum
+
         rows.append({
             "maNV": ts.maNV,
             "hoTen": ts.hoTen,
             "donVi": ts.donVi or "",
-            "scores": row_scores,
-            "total": total,
+            "scores": flat_scores,       # theo thứ tự groups/tests
+            "group_totals": group_totals,  # theo thứ tự groups
+            "total": total_sum,
         })
 
-
-    # 5) Sắp xếp theo tổng giảm dần
     rows.sort(key=lambda r: (-r["total"], r["maNV"]))
 
     return render(request, "ranking/index.html", {
         "cuoc_this": cuoc_this,
         "selected_ct": selected_ct,
-        "columns": columns,
+        "groups": groups,
         "rows": rows,
         "total_max": total_max,
         "title": f"Xếp hạng — {selected_ct.ma} · {selected_ct.tenCuocThi}",
