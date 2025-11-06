@@ -483,7 +483,7 @@ td.num { font-weight: 600; }
                         <td class="num col-group-total" data-kind="group-total" style="display:none;">{{ gsum|floatformat:2 }}</td>
                         {% endfor %}
 
-                        <td class="total num">{{ r.total|floatformat:2 }}</td>
+                        <td class="total num">{{ r.total|floatformat:0}}</td>
                     </tr>
                     {% empty %}
                     <tr>

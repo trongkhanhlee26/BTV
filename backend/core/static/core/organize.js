@@ -66,17 +66,71 @@ document.addEventListener('DOMContentLoaded', function () {
   const inputBT = document.getElementById('tm-btid');
   const inputJSON = document.getElementById('tm-json');
   const form = document.getElementById('tm-form');
+// === Import Excel cho popup THỜI GIAN ===
+const tmImportForm = document.getElementById('tm-import-form');
+const tmImportBtid = document.getElementById('tm-import-btid');
+const tmFile       = document.getElementById('tm-file');
 
-  function openTimeModal(btid, rules) {
-    if (!modal || !rowsBox || !inputBT) {
-      console.warn('[time] elements not found');
+// đồng bộ id bài thi cho form import khi mở modal
+function syncTimeImportBtid() {
+  if (tmImportBtid && inputBT) tmImportBtid.value = inputBT.value || '';
+}
+
+
+// tiện ích lấy CSRF
+function getCsrfToken(formEl) {
+  const inp = formEl?.querySelector('input[name="csrfmiddlewaretoken"]');
+  return inp ? inp.value : '';
+}
+
+tmImportForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!tmFile?.files?.length) {
+    alert('Vui lòng chọn tệp .xlsx trước khi import.');
+    return;
+  }
+  // bảo đảm btid đã set
+  syncTimeImportBtid();
+
+  const fd = new FormData(tmImportForm);
+  // gửi tới cùng URL trang organize hiện tại
+  const url = window.location.pathname;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken(tmImportForm) },
+      body: fd
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert(data.error || 'Import thất bại.');
       return;
     }
-    inputBT.value = btid || '';
+    // Xóa tất cả dòng cũ và đổ mới
     rowsBox.innerHTML = '';
-    (rules || []).forEach(addRowFromObj);
-    modal.style.display = 'flex';
+    (data.rows || []).forEach(addRowFromObj);
+    // Sau khi import, bạn có thể chỉnh sửa tiếp rồi ấn "Lưu cấu hình"
+  } catch (err) {
+    console.error(err);
+    alert('Không thể import. Vui lòng thử lại.');
   }
+});
+
+function openTimeModal(btid, rules) {
+  if (!modal || !rowsBox || !inputBT) {
+    console.warn('[time] elements not found');
+    return;
+  }
+  inputBT.value = btid || '';
+  rowsBox.innerHTML = '';
+  (rules || []).forEach(addRowFromObj);
+
+  // >>> thêm dòng này để form import có đúng bài thi
+  syncTimeImportBtid();
+
+  modal.style.display = 'flex';
+}
+
   function closeTimeModal() { if (modal) modal.style.display = 'none'; }
 
   function addRowFromObj(obj) {

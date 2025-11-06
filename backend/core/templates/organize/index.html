@@ -393,6 +393,40 @@
   background:transparent; color:var(--txt); border:0; border-radius:10px;
 }
 .kebab-item:hover{ background:#182235; }
+/* ==== Modal helpers: giới hạn chiều cao & cho nội dung cuộn ==== */
+.modal-overlay {
+  padding: 24px;                 /* chừa khoảng để vẫn thấy viền card */
+  overflow: auto;                /* nếu card vẫn cao, overlay cho cuộn */
+  display: flex; align-items: center; justify-content: center;
+}
+
+.modal-card {
+  max-height: calc(100vh - 48px);/* card không cao hơn màn hình */
+  width: 1200px; max-width: 96vw;
+  display: flex; flex-direction: column;
+  overflow: hidden;              /* ẩn tràn bên trong, body sẽ cuộn */
+}
+
+.modal-header { flex: 0 0 auto; }
+.modal-body   { 
+  flex: 1 1 auto; 
+  overflow: auto;                /* phần thân cuộn dọc */
+  min-height: 0;                 /* fix flex-overflow trên Firefox */
+}
+
+/* Bảng bên trong vùng xem cấu hình: giữ sticky header, thân cuộn mượt */
+#tplv-content { height: 100%; }
+#tplv-content .scroll-box {
+  max-height: 100%;
+  overflow: auto;
+}
+
+/* (tuỳ chọn) các modal khác cũng nên có giới hạn tương tự */
+#time-modal > div,
+#tpl-modal  > div {
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
 
     </style>
 {% endblock %}
@@ -643,18 +677,39 @@
                 <div class="sec-title">Cấu hình thang thời gian</div>
                 <button id="tm-close" class="btn" type="button">Đóng</button>
             </div>
-            <form id="tm-form" method="post">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="config_time_rules">
-                <input type="hidden" name="baiThi_id" id="tm-btid">
-                <input type="hidden" name="time_rules_json" id="tm-json">
-                <div class="row" style="margin-bottom:8px">
-                    <button class="btn" type="button" id="tm-add">Thêm dòng</button>
-                </div>
-                <div id="tm-rows" class="grid" style="gap:8px"></div>
-                <div class="row" style="margin-top:12px; justify-content:flex-end">
-                    <button class="btn" type="submit">Lưu cấu hình</button>
-                </div>
+<form id="tm-form" method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="config_time_rules">
+  <input type="hidden" name="baiThi_id" id="tm-btid">
+  <input type="hidden" name="time_rules_json" id="tm-json">
+
+  <div class="row" style="margin-bottom:8px">
+    <button class="btn" type="button" id="tm-add">Thêm dòng</button>
+  </div>
+
+  <div id="tm-rows" class="grid" style="gap:8px"></div>
+</form>  <!-- 🔥 ĐÓNG form CHÍNH Ở ĐÂY -->
+
+<!-- 🔥 HÀNG DƯỚI: FORM IMPORT TÁCH RIÊNG + NÚT LƯU -->
+<div class="row" style="margin-top:12px; justify-content:flex-end; gap:12px; align-items:center">
+  <form id="tm-import-form" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:center">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="time_upload_preview">
+    <input type="hidden" name="baiThi_id" id="tm-import-btid">
+    <label style="white-space:nowrap">Import (Excel)</label>
+    <input type="file" name="time_file" id="tm-file" accept=".xlsx"
+           style="background:#0b1220;color:#e5e7eb;border:1px solid #243045;border-radius:8px;padding:8px 10px">
+    <button class="btn" type="submit">Import file</button>
+  </form>
+  <!-- 🔽 Nút Tải file mẫu (đính kèm từ static/files) -->
+  <a class="btn" href="{% static 'files/mẫu file chấm theo thời gian.xlsx' %}" download>
+    Tải file mẫu
+  </a>
+  <!-- Nút này submit form CHÍNH nhờ thuộc tính form="tm-form" -->
+  <button class="btn" type="submit" form="tm-form">Lưu cấu hình</button>
+</div>
+
+
             </form>
         </div>
     </div>
@@ -685,17 +740,28 @@
             </form>
         </div>
     </div>
-    <!-- MODAL xem cấu hình đã thêm -->
-    <div id="tpl-view-modal"
-        style="display:none; position:fixed; inset:0; background:#0009; z-index:1000; align-items:center; justify-content:center;">
-    <div class="card" style="width:1200px; max-width:96vw; padding:16px">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-        <div class="sec-title">Cấu hình đã thêm</div>
-        <button id="tplv-close" class="btn btn-sm" type="button">Đóng</button>
+<!-- MODAL xem cấu hình đã thêm -->
+<div id="tpl-view-modal"
+     class="modal-overlay"
+     style="display:none; position:fixed; inset:0; background:#0009; z-index:1000;">
+  <div class="card modal-card">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+      <div class="sec-title">Cấu hình đã thêm</div>
+      <button id="tplv-close" class="btn btn-sm" type="button">Đóng</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- giữ nguyên id để JS hiện nội dung -->
+      <div id="tplv-content">
+        <!-- bọc bảng render vào scroll-box để cuộn -->
+        <div class="scroll-box">
+          <!-- bảng sẽ được JS nhét vào đây như trước -->
         </div>
-        <div id="tplv-content"></div>
+      </div>
     </div>
-    </div>
+  </div>
+</div>
+
     <!-- MODAL: Xem giám khảo chấm -->
     <div id="judge-view-modal"
         style="display:none; position:fixed; inset:0; background:#0b1220cc; z-index:1000; align-items:center; justify-content:center;">
