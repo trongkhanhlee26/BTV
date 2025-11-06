@@ -2,6 +2,8 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.db.models import Prefetch
+from django.http import JsonResponse, QueryDict
+import json
 from .models import CuocThi, VongThi, BaiThi, BaiThiTimeRule, BaiThiTemplateSection, BaiThiTemplateItem, GiamKhao, GiamKhaoBaiThi
 
 
@@ -285,6 +287,89 @@ def organize_view(request, ct_id=None):
                 messages.success(request, f"Đã import {len(section_order)} mục lớn và {len(items)} mục nhỏ cho {bt.ma}.")
                 return redirect(request.path)
 
+            # Update judge assignments for a baiThi (AJAX)
+            # Accept either a regular form POST with action=update_assignments or a JSON POST
+            # (some clients send Content-Type: application/json; charset=utf-8 so check substring)
+            if action == "update_assignments" or (request.content_type and 'application/json' in request.content_type):
+                # Accept form-encoded or JSON body
+                payload = {}
+                try:
+                    ct = (request.content_type or '').lower()
+                    if 'application/json' in ct:
+                        raw = request.body or b''
+                        if not raw:
+                            # empty body — treat as empty payload
+                            payload = {}
+                        else:
+                            try:
+                                payload = json.loads(raw.decode('utf-8'))
+                            except Exception as e:
+                                body_snippet = raw.decode('utf-8', errors='replace')[:500]
+                                # log minimal info for debugging (server console)
+                                print(f"[organize] JSON parse error: {e}; content_type={request.content_type}; body_snippet={body_snippet!r}")
+                                return JsonResponse({"ok": False, "message": f"Invalid payload (JSON parse error). content_type={request.content_type}; body_snippet={body_snippet[:200]}"}, status=400)
+                    else:
+                        # form-encoded (QueryDict)
+                        payload = request.POST
+                except Exception as e:
+                    print(f"[organize] payload parsing unexpected error: {e}")
+                    return JsonResponse({"ok": False, "message": "Invalid payload"}, status=400)
+
+                # baiThi id
+                btid = None
+                if isinstance(payload, dict):
+                    btid = payload.get('baiThi_id')
+                else:
+                    # QueryDict (request.POST)
+                    btid = payload.get('baiThi_id') or request.POST.get('baiThi_id')
+
+                # judges: support JSON array, comma-separated string, or repeated form fields
+                judges = []
+                if isinstance(payload, QueryDict):
+                    # request.POST: getlist returns all repeated 'judges' values
+                    judges = payload.getlist('judges') or []
+                else:
+                    # payload is dict from JSON parsing
+                    raw_judges = payload.get('judges') if isinstance(payload, dict) else None
+                    if isinstance(raw_judges, list):
+                        judges = raw_judges
+                    elif isinstance(raw_judges, str):
+                        # comma-separated
+                        judges = [s.strip() for s in raw_judges.split(',') if s.strip()]
+                    else:
+                        judges = []
+
+                if not btid:
+                    return JsonResponse({"ok": False, "message": "Missing baiThi_id"}, status=400)
+
+                try:
+                    bt = BaiThi.objects.get(id=btid)
+                except BaiThi.DoesNotExist:
+                    return JsonResponse({"ok": False, "message": "BaiThi not found"}, status=404)
+
+                # Current assigned set
+                current = set(g.giamKhao.maNV for g in bt.giam_khao_duoc_chi_dinh.all())
+                newset = set(judges)
+
+                to_add = newset - current
+                to_remove = current - newset
+
+                from django.db import transaction
+                with transaction.atomic():
+                    # remove
+                    if to_remove:
+                        GiamKhaoBaiThi.objects.filter(baiThi=bt, giamKhao_id__in=list(to_remove)).delete()
+                    # add (only if giamkhao exists)
+                    for ma in to_add:
+                        try:
+                            gk = GiamKhao.objects.get(maNV=ma)
+                            GiamKhaoBaiThi.objects.create(giamKhao=gk, baiThi=bt)
+                        except GiamKhao.DoesNotExist:
+                            # skip unknown judge codes
+                            continue
+
+                return JsonResponse({"ok": True, "message": "Assignments updated", "added": list(to_add), "removed": list(to_remove)})
+
             messages.error(request, "Hành động không hợp lệ.")
             return redirect(request.path)
 
@@ -317,8 +402,21 @@ def organize_view(request, ct_id=None):
     ).order_by("-id")
     if ct_id:
         base_qs = base_qs.filter(id=ct_id)
-    judges = GiamKhao.objects.filter(role="JUDGE").all()
-    return render(request, "organize/index.html", {"cuoc_this": base_qs, "judges": judges})
+    judges = list(GiamKhao.objects.filter(role="JUDGE").all())
+
+    # Prepare JSON-serializable payload for the template's `json_script` helper.
+    # Template expects `judges_payload` and uses it as `ALL_JUDGES` in JS.
+    # The frontend expects items with `code` and `name` properties
+    judges_payload = [
+        {
+            "code": getattr(g, "maNV", ""),
+            "name": getattr(g, "hoTen", ""),
+            "email": getattr(g, "email", ""),
+        }
+        for g in judges
+    ]
+
+    return render(request, "organize/index.html", {"cuoc_this": base_qs, "judges": judges, "judges_payload": judges_payload})
 
 
 @require_http_methods(["GET", "POST"])

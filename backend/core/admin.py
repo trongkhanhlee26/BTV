@@ -25,7 +25,13 @@ class GiamKhaoAdmin(admin.ModelAdmin):
     search_fields = ("maNV", "hoTen")
 
     def bai_thi(self, obj):
-        return ", ".join([bt.tenBaiThi for bt in obj.phan_cong_bai_thi.all()])
+        try:
+            # obj.phan_cong_bai_thi yields GiamKhaoBaiThi instances (assignment objects)
+            # access the related BaiThi via .baiThi
+            return ", ".join([assign.baiThi.tenBaiThi for assign in obj.phan_cong_bai_thi.all()])
+        except Exception:
+            return ""
+    bai_thi.short_description = "Bài thi"
     
 @admin.register(CuocThi)
 class CuocThiAdmin(admin.ModelAdmin):
