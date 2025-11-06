@@ -51,14 +51,14 @@ def organize_view(request, ct_id=None):
                 vt_id = request.POST.get("vongThi_id")
                 ten_bt = (request.POST.get("tenBaiThi") or "").strip()
                 method = request.POST.get("phuongThucCham") or "POINTS"
-                max_diem = request.POST.get("cachChamDiem")
-                judge_id = (request.POST.get("judge_id") or "").strip()
+                max_diem = request.POST.get("cachChamDiem") 
+                judge_ids = request.POST.getlist("judge_id")
                 # POINTS thì phải có max_diem; TIME/TEMPLATE thì cho phép max_diem=0 tạm thời
                 if not vt_id or not ten_bt:
                     messages.error(request, "Vui lòng chọn vòng thi và nhập tên bài thi.")
                     return redirect(request.path)
                 
-                if not judge_id:
+                if not judge_ids:
                     messages.error(request, "Vui lòng chọn giám khảo chấm cho bài thi.")
                     return redirect(request.path)
                 
@@ -75,13 +75,15 @@ def organize_view(request, ct_id=None):
                 )
 
                 # --- phân công giám khảo ---
-                gk = GiamKhao.objects.filter(maNV=judge_id, role="JUDGE").first()
-                if not gk:
-                    bt.delete() 
-                    messages.error(request, "Giám khảo không hợp lệ hoặc không phải role Giám khảo.")
-                    return redirect(request.path)
+                for judge_id in judge_ids:
+                    gk = GiamKhao.objects.filter(maNV=judge_id, role="JUDGE").first()
+                    if not gk:
+                        bt.delete() 
+                        messages.error(request, f"Giám khảo {judge_id} không hợp lệ.")
+                        return redirect(request.path)
 
-                GiamKhaoBaiThi.objects.get_or_create(giamKhao=gk, baiThi=bt)
+                    # Associate the judge with the exam
+                    GiamKhaoBaiThi.objects.get_or_create(giamKhao=gk, baiThi=bt)
 
                 messages.success(request, f"Tạo bài thi “{bt.tenBaiThi}” trong vòng “{vong_thi.tenVongThi}” thành công.")
                 return redirect(request.path)
@@ -315,7 +317,7 @@ def organize_view(request, ct_id=None):
     ).order_by("-id")
     if ct_id:
         base_qs = base_qs.filter(id=ct_id)
-    judges = GiamKhao.objects.filter(role="JUDGE").order_by("hoTen")
+    judges = GiamKhao.objects.filter(role="JUDGE").all()
     return render(request, "organize/index.html", {"cuoc_this": base_qs, "judges": judges})
 
 

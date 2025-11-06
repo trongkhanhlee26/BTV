@@ -38,6 +38,26 @@ document.addEventListener('DOMContentLoaded', function () {
     sync();
   });
 
+  // === Kebab (3 chấm) dropdown ===
+  (function initKebab(){
+    document.body.addEventListener('click', (e) => {
+      // đóng tất cả trước
+      document.querySelectorAll('.kebab-menu').forEach(m => m.style.display = 'none');
+
+      const toggle = e.target.closest?.('.kebab-toggle');
+      if (toggle) {
+        const wrap = toggle.closest('.kebab');
+        const menu = wrap?.querySelector('.kebab-menu');
+        if (menu) { menu.style.display = (menu.style.display === 'block') ? 'none' : 'block'; }
+      }
+    });
+
+    // // ngăn menu tự tắt khi bấm vào trong
+    // document.body.addEventListener('click', (e) => {
+    //   if (e.target.closest?.('.kebab-menu')) e.stopPropagation();
+    // }, true);
+  })();
+
   // ===== Modal cấu hình THỜI GIAN =====
   const modal = document.getElementById('time-modal');
   const rowsBox = document.getElementById('tm-rows');
@@ -371,6 +391,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // ===== Làm sạch nội dung bảng trong popup =====
   const rows = viewContent.querySelectorAll('tbody tr');
 
+
+
   function stripCodes(txt) {
     // Bỏ tiền tố "BT123 - ", "VT02 - " ở bất kỳ vị trí nào
     txt = txt.replace(/\b(?:BT|VT)\d+\s*-\s*/gi, '');
@@ -433,11 +455,66 @@ document.addEventListener('DOMContentLoaded', function () {
     tdItem.textContent    = i;
 
   });
-
-
       // mở modal
       viewModal.style.display = 'flex';
     });
+  // ==== Modal: Xem giám khảo chấm ====
+  (function initJudgeView() {
+    const modal = document.getElementById('judge-view-modal');
+    const content = document.getElementById('judgev-content');
+    const closeBtn = document.getElementById('judgev-close');
+    if (!modal || !content) return;
+
+    function openJudgeModal(btid) {
+      const holder = document.getElementById(`assigned-${btid}`);
+      const assigned = (holder?.dataset.assigned || '')
+                        .split(',').map(s => s.trim()).filter(Boolean);
+      const set = new Set(assigned);
+
+      const rows = (window.ALL_JUDGES || []).map((j) => {
+        const checked = set.has(j.code) ? 'checked' : '';
+        return `
+          <tr>
+            <td style="width:56px; text-align:center">
+              <input type="checkbox" ${checked} disabled>
+            </td>
+            <td style="width:120px; font-weight:600">${j.code}</td>
+            <td>${j.name || ''}</td>
+          </tr>
+        `;
+      }).join('');
+
+      content.innerHTML = `
+        <table class="table" style="width:100%">
+          <thead>
+            <tr>
+              <th style="width:56px">Chọn</th>
+              <th style="width:120px">Mã NV</th>
+              <th>Tên giám khảo</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    // Xử lý sự kiện khi click vào button "Xem giám khảo chấm"
+    document.body.addEventListener('click', (e) => {
+      const btn = e.target.closest?.('[data-open-judge-view]');
+      if (!btn) return;
+      const btid = btn.getAttribute('data-btid');
+      openJudgeModal(btid);
+      // Đóng menu nếu nó đang mở
+      const kebabMenu = btn.closest('.kebab')?.querySelector('.kebab-menu');
+      if (kebabMenu) kebabMenu.style.display = 'none';
+    });
+
+    closeBtn?.addEventListener('click', () => modal.style.display = 'none');
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.style.display = 'none';
+    });
+  })();
 
     viewClose?.addEventListener('click', () => viewModal.style.display = 'none');
     viewModal.addEventListener('click', (e) => {
@@ -580,8 +657,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (hasErr) {
-          e.preventDefault();   // ⛔ không submit → không reload
-          e.stopPropagation();
+          e.preventDefault();
         }
       });
     });

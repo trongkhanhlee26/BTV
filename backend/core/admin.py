@@ -21,8 +21,11 @@ class ThiSinhAdmin(admin.ModelAdmin):
 
 @admin.register(GiamKhao)
 class GiamKhaoAdmin(admin.ModelAdmin):
-    list_display = ("maNV", "hoTen", "email", "role")
+    list_display = ("maNV", "hoTen", "email", "role", "bai_thi")
     search_fields = ("maNV", "hoTen")
+
+    def bai_thi(self, obj):
+        return ", ".join([bt.tenBaiThi for bt in obj.phan_cong_bai_thi.all()])
     
 @admin.register(CuocThi)
 class CuocThiAdmin(admin.ModelAdmin):

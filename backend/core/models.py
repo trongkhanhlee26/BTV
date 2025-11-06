@@ -17,11 +17,11 @@ def generate_code(model, prefix):
 class ThiSinh(models.Model):
     maNV = models.CharField(max_length=20, primary_key=True)
     hoTen = models.CharField(max_length=100)
-    chiNhanh = models.CharField(max_length=100)
+    chiNhanh = models.CharField(max_length=100, null=True)
     vung = models.CharField(max_length=100, blank=True, null=True)
     donVi = models.CharField(max_length=100, blank=True, null=True)
-    email = models.EmailField(unique=True)
-    nhom = models.CharField(max_length=50)
+    email = models.EmailField(unique=True, null=True)
+    nhom = models.CharField(max_length=50, null=True)
     cuocThi = models.ManyToManyField(
         'CuocThi',
         through='ThiSinhCuocThi',
