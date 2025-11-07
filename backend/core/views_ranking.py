@@ -93,28 +93,27 @@ def ranking_view(request):
 
     rows = []
     for ts in ts_qs:
-        # điểm từng bài (flatten theo thứ tự groups/tests)
-        flat_scores = []
-        group_totals = []
+        groups_view = []
         total_sum = 0.0
 
         for g in groups:
+            g_scores = []
             g_sum = 0.0
             for t in g["tests"]:
                 val = score_map.get((ts.maNV, t["id"]), 0.0)
-                flat_scores.append(val)
+                g_scores.append(val)
                 g_sum += val
-            group_totals.append(g_sum)
+            groups_view.append({"scores": g_scores, "total": g_sum})
             total_sum += g_sum
 
         rows.append({
             "maNV": ts.maNV,
             "hoTen": ts.hoTen,
             "donVi": ts.donVi or "",
-            "scores": flat_scores,       # theo thứ tự groups/tests
-            "group_totals": group_totals,  # theo thứ tự groups
+            "groups_view": groups_view,   # <--- mới: dữ liệu theo Vòng
             "total": total_sum,
         })
+
 
     rows.sort(key=lambda r: (-r["total"], r["maNV"]))
 

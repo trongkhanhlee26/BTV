@@ -14,50 +14,53 @@
   const vtRow = thead.rows[0];                   // hàng Vòng thi
   const btRow = thead.rows[thead.rows.length-1]; // hàng Bài thi
 
-  // === A) Lấy nhóm Vòng thi và các header bài thi ===
-  const groupThs       = Array.from(vtRow.querySelectorAll('th.vt-group'));
-  const testHeaderThs  = Array.from(btRow.querySelectorAll('th.col-test'));
-  const groupTotalThs  = Array.from(btRow.querySelectorAll('th.col-group-total'));
+// Trong BODY: vị trí bắt đầu các cột biến thiên (sau 4 cột cố định)
+const fixedPrefixCount = 4;
+const testsStartIndex  = fixedPrefixCount;
 
-  // Trong BODY: vị trí bắt đầu của các ô điểm bài thi (sau 4 cột cố định)
-  const sampleCells = Array.from(rows[0].cells);
-  const fixedPrefixCount = 4;      // STT, Mã NV, Họ tên, Đơn vị
-  const testsStartIndex  = fixedPrefixCount;
-  const testsCount       = testHeaderThs.length;
-  const groupTotalsStart = testsStartIndex + testsCount;   // ngay sau toàn bộ bài thi
-  const totalBodyIndex   = sampleCells.length - 1;         // ô Tổng chung (body)
+// === Xây mapping header->body bằng cách duyệt tuần tự btRow ===
+const headerCells = Array.from(btRow.cells); // chỉ gồm: [..col-test..][..col-group-total..] (đan xen theo Vòng)
+const sampleCells = Array.from(rows[0].cells);
+const totalBodyIndex = sampleCells.length - 1; // cột Tổng cuối bảng
 
-  // Ánh xạ: chỉ số header (btRow) -> chỉ số body tương ứng
-  //   btRow chỉ chứa: [các th.col-test ...][các th.col-group-total ...]
-  const headerToBodyIndex = [];
-  for(let i=0; i<testsCount; i++) headerToBodyIndex.push(testsStartIndex + i);
-  for(let i=0; i<groupTotalThs.length; i++) headerToBodyIndex.push(groupTotalsStart + i);
+let bodyCursor = testsStartIndex;
+const headerToBodyIndex = headerCells.map(() => 0);
+headerCells.forEach((_, hIdx) => {
+  headerToBodyIndex[hIdx] = bodyCursor;
+  bodyCursor += 1;
+});
 
-  // === B) Meta theo Vòng để toggle gộp/giãn ===
-  const groupsMeta = groupThs.map((gth, gi) => {
-    const tests = testHeaderThs.filter(th => parseInt(th.dataset.groupIndex, 10) === gi);
-    const totalTh = groupTotalThs.find(th => parseInt(th.dataset.groupIndex, 10) === gi);
+// Lấy lại các NodeLists cần dùng
+const groupThs      = Array.from(vtRow.querySelectorAll('th.vt-group'));
+const testHeaderThs = headerCells.filter(th => th.classList.contains('col-test'));
+const groupTotalThs = headerCells.filter(th => th.classList.contains('col-group-total'));
 
-    // Tìm index header của các th.col-test thuộc nhóm này
-    const headerTestIndexes = tests.map(th => Array.from(btRow.cells).indexOf(th));
-    // Map sang index body
-    const bodyTestIndexes = headerTestIndexes.map(hIdx => headerToBodyIndex[hIdx]);
+// === Meta cho từng Vòng (tìm đúng body index theo mapping mới) ===
+const groupsMeta = groupThs.map((gth, gi) => {
+  const tests = headerCells.filter(th =>
+    th.classList.contains('col-test') && parseInt(th.dataset.groupIndex, 10) === gi
+  );
+  const totalTh = headerCells.find(th =>
+    th.classList.contains('col-group-total') && parseInt(th.dataset.groupIndex, 10) === gi
+  );
 
-    // Index header & body của ô tổng-vòng
-    const headerTotalIndex = Array.from(btRow.cells).indexOf(totalTh);
-    const bodyTotalIndex   = headerToBodyIndex[headerTotalIndex];
+  const headerTestIndexes = tests.map(th => headerCells.indexOf(th));
+  const bodyTestIndexes   = headerTestIndexes.map(hIdx => headerToBodyIndex[hIdx]);
 
-    return {
-      gi,
-      gth,
-      tests,
-      totalTh,
-      bodyTestIndexes,
-      bodyTotalIndex,
-      collapsed: false,
-      originalColspan: parseInt(gth.getAttribute('data-colspan'), 10) || tests.length
-    };
-  });
+  const headerTotalIndex = headerCells.indexOf(totalTh);
+  const bodyTotalIndex   = headerToBodyIndex[headerTotalIndex];
+
+  return {
+    gi,
+    gth,
+    tests,
+    totalTh,
+    bodyTestIndexes,
+    bodyTotalIndex,
+    collapsed: false,
+    originalColspan: parseInt(gth.getAttribute('data-colspan'), 10) || tests.length
+  };
+});
 
   function setGroupCollapsed(meta, collapsed){
     meta.collapsed = collapsed;
@@ -128,6 +131,7 @@
   const btCells = [...testHeaderThs];              // chỉ <th class="col-test">
   const headerVarIdx = btCells.map((_, i) => i);   // 0..testsCount-1
   const varCount = headerVarIdx.length;
+  const btToHeaderIndex = btCells.map(th => headerCells.indexOf(th));
   let colGroups = [];
   if (varCount <= colGroupSize) {
     colGroups = [headerVarIdx];                    // không quét ngang khi <=5
@@ -155,19 +159,19 @@
     for (let i=0; i<fixedPrefixCount; i++) showBodyIdx.add(i);
     showBodyIdx.add(totalBodyIndex);
 
-    // Thêm các cột BÀI THI của nhóm hiện tại
-    (colGroups[colGroup] || headerVarIdx).forEach(hIdx => {
-      const bIdx = headerToBodyIndex[hIdx];
-      if (typeof bIdx === 'number') showBodyIdx.add(bIdx);
-    });
+ (colGroups[colGroup] || headerVarIdx).forEach(hIdx => {
+   const headerIndex = btToHeaderIndex[hIdx];           // chuyển chỉ số btCells -> headerCells
+   const bIdx = headerToBodyIndex[headerIndex];         // rồi mới map header -> body
+   if (typeof bIdx === 'number') showBodyIdx.add(bIdx);
+ });
 
     // Nếu VÒNG nào đang gộp, giữ cột TỔNG-VÒNG luôn hiển thị
-    groupTotalThs.forEach((th, i) => {
-      if (th.classList.contains('g-total-visible')) {
-        const bIdx = groupTotalsStart + i;
-        showBodyIdx.add(bIdx);
-      }
-    });
+groupsMeta.forEach(meta => {
+  if (meta.totalTh && meta.totalTh.classList.contains('g-total-visible')) {
+    showBodyIdx.add(meta.bodyTotalIndex);
+  }
+});
+
 
     // Ẩn/hiện HEADER hàng 2 (chỉ bài thi)
     btCells.forEach((th, i) => {
