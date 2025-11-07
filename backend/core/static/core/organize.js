@@ -509,6 +509,30 @@ function openTimeModal(btid, rules) {
     tdItem.textContent    = i;
 
   });
+  // Nếu header dùng đơn vị giây (s) → chuyển sang phút và đổi số
+  try {
+    const thead = viewContent.querySelector('thead');
+    if (thead && thead.textContent && thead.textContent.indexOf('(s)') !== -1) {
+      // đổi header từ (s) → (phút)
+      thead.querySelectorAll('th').forEach(th => {
+        th.textContent = th.textContent.replace(/\(s\)/ig, '(phút)');
+      });
+
+      // chuyển các ô cột Từ/Đến từ giây -> phút (làm tròn xuống)
+      rows.forEach(tr => {
+        for (let ci = 0; ci <= 1; ci++) {
+          const cell = tr.cells?.[ci];
+          if (!cell) continue;
+          const txt = (cell.textContent || '').trim();
+          const n = parseInt(txt, 10);
+          if (!isNaN(n)) {
+            const m = Math.floor(n / 60);
+            cell.textContent = String(m);
+          }
+        }
+      });
+    }
+  } catch (e) { console.warn('[tpl-view] convert seconds->minutes failed', e); }
       // mở modal
       viewModal.style.display = 'flex';
     });
@@ -524,32 +548,118 @@ function openTimeModal(btid, rules) {
       const assigned = (holder?.dataset.assigned || '')
                         .split(',').map(s => s.trim()).filter(Boolean);
       const set = new Set(assigned);
+      let dirty = false; // whether user changed selection
 
       const rows = (window.ALL_JUDGES || []).map((j) => {
-        const checked = set.has(j.code) ? 'checked' : '';
+        const checked = set.has(j.code);
+        // make checkbox editable; attach change handler to mark dirty
+        const inputId = `chk-${btid}-${j.code}`;
         return `
           <tr>
-            <td style="width:56px; text-align:center">
-              <input type="checkbox" ${checked} disabled>
-            </td>
-            <td style="width:120px; font-weight:600">${j.code}</td>
-            <td>${j.name || ''}</td>
-          </tr>
+              <td style="width:40px; text-align:center">
+                <input id="${inputId}" type="checkbox" ${checked ? 'checked' : ''}>
+              </td>
+              <td style="width:140px; font-weight:600">${j.code}</td>
+              <td>${j.name || ''}</td>
+            </tr>
         `;
       }).join('');
 
+      // Set modal title to the bài thi name when available
+      try {
+        const titleEl = document.getElementById('judgev-title');
+        if (titleEl) titleEl.textContent = holder?.dataset.title || 'Giám khảo chấm';
+      } catch (e) { /* ignore */ }
+
+      // Use a colgroup with fixed widths so header and body columns align exactly.
+      // First column (checkbox) small, second (code) medium, third (name) flexible.
       content.innerHTML = `
-        <table class="table" style="width:100%">
+        <table class="table" style="width:100%; table-layout:fixed;">
+          <colgroup>
+          <col style="width:80px"> 
+          <col style="width:140px">
+            <col>
+          </colgroup>
           <thead>
             <tr>
-              <th style="width:56px">Chọn</th>
-              <th style="width:120px">Mã NV</th>
-              <th>Tên giám khảo</th>
+              <th style="text-align:center">Chọn</th>
+              <th style="text-align:left">Mã NV</th>
+              <th style="text-align:left">Tên giám khảo</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
       `;
+
+      // After injecting rows, attach change handlers to checkboxes
+      (window.ALL_JUDGES || []).forEach((j) => {
+        const inputId = `chk-${btid}-${j.code}`;
+        const el = document.getElementById(inputId);
+        if (!el) return;
+        el.addEventListener('change', () => { dirty = true; });
+      });
+
+      // Enable checkboxes (they are editable now) and ensure keyboard focus works
+      content.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.removeAttribute('disabled'));
+
+      // Set the close button to either save changes (if any) or just close
+      closeBtn.onclick = async function () {
+        if (!dirty) {
+          modal.style.display = 'none';
+          return;
+        }
+
+        // build current selection
+        const checkedCodes = Array.from(content.querySelectorAll('tbody input[type="checkbox"]:checked'))
+          .map(cb => cb.closest('tr').querySelector('td:nth-child(2)').textContent.trim());
+
+        const initial = Array.from(set);
+        const same = initial.length === checkedCodes.length && initial.every(v => checkedCodes.includes(v));
+        if (same) {
+          modal.style.display = 'none';
+          return;
+        }
+
+        // send update to server
+        // helper to read csrf token from cookie
+        function getCookie(name) {
+          const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+          return v ? v.pop() : '';
+        }
+
+        try {
+          const payload = { baiThi_id: btid, judges: checkedCodes };
+          // send as form-encoded so server can read via request.POST reliably
+          const formBody = new URLSearchParams();
+          formBody.append('action', 'update_assignments');
+          formBody.append('baiThi_id', String(btid));
+          // append judges as repeated fields
+          checkedCodes.forEach(code => formBody.append('judges', code));
+
+          const res = await fetch(window.location.pathname, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+              'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: formBody.toString(),
+          });
+
+          const dataText = await res.text();
+          let data = {};
+          try { data = JSON.parse(dataText); } catch (err) { /* not JSON */ }
+
+          if (res.ok && data.ok) {
+            if (holder) holder.dataset.assigned = checkedCodes.join(',');
+            modal.style.display = 'none';
+          } else {
+            alert('Cập nhật phân công thất bại: ' + (data.message || res.statusText || dataText));
+          }
+        } catch (e) {
+          alert('Lỗi khi cập nhật phân công: ' + e.message);
+        }
+      };
       modal.style.display = 'flex';
     }
 
