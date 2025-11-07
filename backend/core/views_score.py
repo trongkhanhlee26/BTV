@@ -6,7 +6,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db import transaction
 from django.db.models import Avg, Q, Max
 from core.decorators import judge_required
-from .models import CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi, BaiThiTemplateItem,BaiThiTemplateSection
+from .models import (CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi, BaiThiTemplateItem, BaiThiTemplateSection, GiamKhaoBaiThi)
 import json
 
 def _pick_competition(preferred_id: int | None):
@@ -61,6 +61,15 @@ def _current_judge(request):
             gk = GiamKhao.objects.filter(maNV__iexact=username).first()
             if gk:
                 return gk
+        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+            gk = (
+                GiamKhao.objects.filter(role="ADMIN")
+                .filter(Q(email__iexact=email) | Q(maNV__iexact=username))
+                .first()
+                or GiamKhao.objects.filter(role="ADMIN").order_by("maNV").first()
+            )
+            if gk:
+                return gk
 
     # 3) Không tìm thấy -> để view xử lý (401)
     return None
@@ -72,6 +81,25 @@ def _active_competition():
     """
     return CuocThi.objects.filter(trangThai=True).order_by("-id").first()
 
+def _judge_is_admin(judge: GiamKhao | None) -> bool:
+    return bool(judge and str(getattr(judge, "role", "")).upper() == "ADMIN")
+
+def _assigned_bai_qs(ct: CuocThi, judge: GiamKhao | None, vt: VongThi | None = None):
+    """
+    Trả về queryset BaiThi theo cuộc thi/vòng thi.
+    - ADMIN: thấy tất cả.
+    - JUDGE: chỉ thấy những bài được phân công (GiamKhaoBaiThi).
+    """
+    base = BaiThi.objects.filter(vongThi__cuocThi=ct)
+    if vt:
+        base = base.filter(vongThi=vt)
+    if _judge_is_admin(judge):
+        return base
+    if judge:
+        return base.filter(giam_khao_duoc_chi_dinh__giamKhao=judge)
+    # không có judge -> không trả gì
+    return base.none()
+
 # after
 def _load_form_data(selected_ts, ct, request):
     """
@@ -81,7 +109,8 @@ def _load_form_data(selected_ts, ct, request):
     """
     if not ct:
         return [], 0
-
+    
+    judge = _current_judge(request)
     vongs = list(VongThi.objects.filter(cuocThi=ct).order_by("id"))
     bai_by_vong = []
     total_max = 0
@@ -109,8 +138,7 @@ def _load_form_data(selected_ts, ct, request):
         bais = []
         
         for bt in (
-            BaiThi.objects
-            .filter(vongThi=vt)
+            _assigned_bai_qs(ct, judge, vt=vt)
             .order_by("id")
             .prefetch_related("time_rules", "template_sections__items")
         ):
@@ -249,11 +277,7 @@ def score_view(request):
         if not judge:
             return JsonResponse({"ok": False, "message": "Bạn chưa đăng nhập giám khảo."}, status=401)
 
-        bai_qs = (
-            BaiThi.objects
-            .filter(vongThi__cuocThi=ct)
-            .prefetch_related("time_rules", "template_sections__items")
-        )
+        bai_qs = _assigned_bai_qs(ct, judge).prefetch_related("time_rules", "template_sections__items")
         bai_map = {b.id: b for b in bai_qs}
 
         def _tpl_max(b):
@@ -482,12 +506,19 @@ def score_view(request):
     selected_vt = None
     selected_bt = None
 
+    judge_for_render = _current_judge(request)
     if ct:
-        rounds = list(VongThi.objects.filter(cuocThi=ct).order_by("id").values("id", "tenVongThi"))
+        # Chỉ vòng có bài hợp lệ với judge
+        vt_qs = VongThi.objects.filter(cuocThi=ct).order_by("id")
+        rounds = []
+        for vt in vt_qs:
+           if _judge_is_admin(judge_for_render) or _assigned_bai_qs(ct, judge_for_render, vt=vt).exists():
+                rounds.append({"id": vt.id, "tenVongThi": vt.tenVongThi})
         if vt_param:
             selected_vt = VongThi.objects.filter(cuocThi=ct, id=vt_param).first()
             if selected_vt:
-                tests = list(BaiThi.objects.filter(vongThi=selected_vt).order_by("id").values("id", "ma", "tenBaiThi"))
+                tests_qs = _assigned_bai_qs(ct, judge_for_render, vt=selected_vt).order_by("id")
+                tests = list(tests_qs.values("id", "ma", "tenBaiThi"))
                 if bt_param:
                     selected_bt = BaiThi.objects.filter(vongThi=selected_vt, id=bt_param).first()
 
@@ -517,18 +548,23 @@ def score_view(request):
         if ct_id:
             ct_obj = CuocThi.objects.filter(trangThai=True, id=ct_id).first()
             if ct_obj:
-                data["rounds"] = list(
-                    VongThi.objects.filter(cuocThi=ct_obj)
-                    .order_by("id")
-                    .values("id", "tenVongThi")
-                )
+                judge = _current_judge(request)
+                # Chỉ những vòng có ít nhất 1 bài hợp lệ với judge
+                vt_qs = (VongThi.objects
+                         .filter(cuocThi=ct_obj)
+                         .order_by("id"))
+                rounds = []
+                for vt in vt_qs:
+                    if _judge_is_admin(judge) or _assigned_bai_qs(ct_obj, judge, vt=vt).exists():
+                        rounds.append({"id": vt.id, "tenVongThi": vt.tenVongThi})
+                data["rounds"] = rounds
+
                 if vt_id:
                     vt_obj = VongThi.objects.filter(cuocThi=ct_obj, id=vt_id).first()
                     if vt_obj:
+                        tests_qs = _assigned_bai_qs(ct_obj, judge, vt=vt_obj).order_by("id")
                         data["tests"] = list(
-                            BaiThi.objects.filter(vongThi=vt_obj)
-                            .order_by("id")
-                            .values("id", "ma", "tenBaiThi")
+                            tests_qs.values("id", "ma", "tenBaiThi")
                         )
         return JsonResponse(data)
 
@@ -562,7 +598,10 @@ def score_template_api(request, btid: int):
     bt = get_object_or_404(BaiThi.objects.prefetch_related("template_sections__items"), pk=btid)
     if str(bt.phuongThucCham).upper() != "TEMPLATE":
         return JsonResponse({"ok": False, "message": "Bài thi này không phải chấm theo mẫu."}, status=400)
-
+    judge = _current_judge(request)
+    if not _judge_is_admin(judge):
+        if not GiamKhaoBaiThi.objects.filter(giamKhao=judge, baiThi=bt).exists():
+            return JsonResponse({"ok": False, "message": "Bạn không được phân công chấm bài này."}, status=403)
     if request.method == "GET":
         try:
             # kiểm tra loại bài là TEMPLATE 

@@ -1,131 +1,288 @@
-  (function(){
-    const table = document.getElementById('rankTable');
-    if(!table) return;
+(function(){
+  const table = document.getElementById('rankTable');
+  if(!table) return;
 
-    const tbody = document.getElementById('rankBody');
-    const rows  = Array.from(tbody.querySelectorAll('tr'));
-    const pageSize      = parseInt(table.dataset.pageSize || '10', 10);
-    const intervalMs    = parseInt(table.dataset.intervalMs || '3000', 10);
-    const colGroupSize  = parseInt(table.dataset.colGroupSize || '5', 10);
-    const pageInfoEl    = document.getElementById('pageInfo');
+  const tbody = document.getElementById('rankBody');
+  const rows  = Array.from(tbody ? tbody.querySelectorAll('tr') : []);
+  if(rows.length === 0) return;
 
-    if(rows.length === 0) return;
+  const pageSize     = parseInt(table.dataset.pageSize || '10', 10);
+  const intervalMs   = parseInt(table.dataset.intervalMs || '3000', 10);
+  const colGroupSize = parseInt(table.dataset.colGroupSize || '5', 10);
 
-    // Xác định index cột cố định và cột bài thi
-    const ths = Array.from(table.tHead.rows[0].cells);
-    const totalIndex = ths.length - 1;                // cột "Tổng" là cuối
-    const fixedIdxSet = new Set([0,1,2,3,totalIndex]); // #, Mã NV, Họ tên, Đơn vị, Tổng
-    const allIdx = ths.map((_,i)=>i);
-    const varIdx = allIdx.filter(i => !fixedIdxSet.has(i)); // các cột bài thi ở giữa
+  const thead = table.tHead;
+  const vtRow = thead.rows[0];                   // hàng Vòng thi
+  const btRow = thead.rows[thead.rows.length-1]; // hàng Bài thi
 
-    // --- Tạo nhóm cột bài thi theo quy tắc “chạm đuôi và đủ G cột” ---
-    const varCount = varIdx.length;
-    const colGroups = [];
+// Trong BODY: vị trí bắt đầu các cột biến thiên (sau 4 cột cố định)
+const fixedPrefixCount = 4;
+const testsStartIndex  = fixedPrefixCount;
 
-    // Nhóm theo bước G: [0..G-1], [G..2G-1], ... (nhóm cuối có thể bị ngắn)
-    for (let start = 0; start < varCount; start += colGroupSize) {
-    const end = Math.min(start + colGroupSize, varCount);
-    colGroups.push(varIdx.slice(start, end));
-    }
+// === Xây mapping header->body bằng cách duyệt tuần tự btRow ===
+const headerCells = Array.from(btRow.cells); // chỉ gồm: [..col-test..][..col-group-total..] (đan xen theo Vòng)
+const sampleCells = Array.from(rows[0].cells);
+const totalBodyIndex = sampleCells.length - 1; // cột Tổng cuối bảng
 
-    // Nếu có nhóm cuối bị NGẮN và tổng số cột > G
-    if (varCount > colGroupSize && (varCount % colGroupSize) !== 0) {
-    // Tạo nhóm “chạm đuôi”: đủ G cột, kết thúc tại cột cuối
-    const tailStart = varCount - colGroupSize;     // ví dụ 13-5=8 → (index 8 là cột thứ 9)
-    const tailGroup = varIdx.slice(tailStart, varCount);
-    // Thay THẲNG nhóm CUỐI (ngắn) bằng tailGroup (đủ G) — KHÔNG push thêm
-    colGroups[colGroups.length - 1] = tailGroup;
-    }
+let bodyCursor = testsStartIndex;
+const headerToBodyIndex = headerCells.map(() => 0);
+headerCells.forEach((_, hIdx) => {
+  headerToBodyIndex[hIdx] = bodyCursor;
+  bodyCursor += 1;
+});
 
-    const totalColGroups = Math.max(1, colGroups.length);
+// Lấy lại các NodeLists cần dùng
+const groupThs      = Array.from(vtRow.querySelectorAll('th.vt-group'));
+const testHeaderThs = headerCells.filter(th => th.classList.contains('col-test'));
+const groupTotalThs = headerCells.filter(th => th.classList.contains('col-group-total'));
 
+// === Meta cho từng Vòng (tìm đúng body index theo mapping mới) ===
+const groupsMeta = groupThs.map((gth, gi) => {
+  const tests = headerCells.filter(th =>
+    th.classList.contains('col-test') && parseInt(th.dataset.groupIndex, 10) === gi
+  );
+  const totalTh = headerCells.find(th =>
+    th.classList.contains('col-group-total') && parseInt(th.dataset.groupIndex, 10) === gi
+  );
 
-    const totalRowPages  = Math.ceil(rows.length / pageSize);
-    let rowPage = 0;   // trang người
-    let colGroup = 0;  // nhóm cột bài thi
+  const headerTestIndexes = tests.map(th => headerCells.indexOf(th));
+  const bodyTestIndexes   = headerTestIndexes.map(hIdx => headerToBodyIndex[hIdx]);
 
-    // === Thêm: số bước cần để hoàn thành 1 vòng đầy đủ ===
-    const totalStepsPerCycle = Math.max(1, totalRowPages * totalColGroups);
-    let stepsLeftToReset = totalStepsPerCycle;
+  const headerTotalIndex = headerCells.indexOf(totalTh);
+  const bodyTotalIndex   = headerToBodyIndex[headerTotalIndex];
 
-    function applyColumnVisibility(){
-      const showIdx = new Set([ ...fixedIdxSet, ...colGroups[colGroup] ]);
-      // Header
-      ths.forEach((th, i) => { th.style.display = showIdx.has(i) ? '' : 'none'; });
-      // Body rows
-      rows.forEach(tr => {
-        const cells = Array.from(tr.cells);
-        cells.forEach((td, i) => { td.style.display = showIdx.has(i) ? '' : 'none'; });
-      });
-    }
+  return {
+    gi,
+    gth,
+    tests,
+    totalTh,
+    bodyTestIndexes,
+    bodyTotalIndex,
+    collapsed: false,
+    originalColspan: parseInt(gth.getAttribute('data-colspan'), 10) || tests.length
+  };
+});
 
-    function showRowPage(){
-      // Ẩn/Hiện 10 người theo trang
-      rows.forEach(r => r.style.display = 'none');
-      const start = rowPage * pageSize;
-      const end = Math.min(start + pageSize, rows.length);
-      for(let i=start; i<end; i++){ rows[i].style.display = ''; }
-      // Áp nhóm cột
-      applyColumnVisibility();
+  function setGroupCollapsed(meta, collapsed){
+    meta.collapsed = collapsed;
 
-      if(pageInfoEl){
-        pageInfoEl.textContent = `Trang người ${rowPage+1}/${totalRowPages} • Nhóm cột ${colGroup+1}/${totalColGroups}`;
+    // HEADER: bài thi trong vòng
+    meta.tests.forEach(th => {
+      if (collapsed) {
+        th.classList.add('g-collapsed');   // đánh dấu do gộp
+        th.style.display = 'none';
+      } else {
+        th.classList.remove('g-collapsed');
+        th.style.display = '';
+      }
+    });
+
+    // HEADER: ô "Tổng vòng"
+    if (meta.totalTh){
+      if (collapsed) {
+        meta.totalTh.classList.add('g-total-visible');  // tổng vòng đang hiển thị
+        meta.totalTh.style.display = '';
+      } else {
+        meta.totalTh.classList.remove('g-total-visible');
+        meta.totalTh.style.display = 'none';
       }
     }
 
-    function advance(){
-      // Tiến nhóm cột trước; hết nhóm thì sang 10 người tiếp theo
+    // HEADER: Vòng thi (colspan)
+    meta.gth.colSpan = collapsed ? 1 : meta.originalColspan;
+
+    // BODY: các ô bài thi trong nhóm
+    rows.forEach(tr => {
+      const tds = Array.from(tr.cells);
+      meta.bodyTestIndexes.forEach(bi => {
+        const td = tds[bi];
+        if (!td) return;
+        if (collapsed) {
+          td.classList.add('g-collapsed');
+          td.style.display = 'none';
+        } else {
+          td.classList.remove('g-collapsed');
+          td.style.display = '';
+        }
+      });
+      // BODY: ô tổng vòng
+      const tdTotal = tds[meta.bodyTotalIndex];
+      if (tdTotal){
+        if (collapsed) {
+          tdTotal.classList.add('g-total-visible');
+          tdTotal.style.display = '';
+        } else {
+          tdTotal.classList.remove('g-total-visible');
+          tdTotal.style.display = 'none';
+        }
+      }
+    });
+  }
+
+  // Click tiêu đề Vòng để gộp/giãn
+  groupThs.forEach((gth, i) => {
+    gth.addEventListener('click', () => {
+      const meta = groupsMeta[i];
+      setGroupCollapsed(meta, !meta.collapsed);
+      showRowPage(); // refresh
+    });
+  });
+
+  // 1) Chỉ QUÉT NGANG theo BÀI THI (không tính cột “Tổng vòng”)
+  const btCells = [...testHeaderThs];              // chỉ <th class="col-test">
+  const headerVarIdx = btCells.map((_, i) => i);   // 0..testsCount-1
+  const varCount = headerVarIdx.length;
+  const btToHeaderIndex = btCells.map(th => headerCells.indexOf(th));
+  let colGroups = [];
+  if (varCount <= colGroupSize) {
+    colGroups = [headerVarIdx];                    // không quét ngang khi <=5
+  } else {
+    // Chia liên tiếp 5-5-5…; trang cuối có thể <5
+    for (let start = 0; start < varCount; start += colGroupSize) {
+      const end = Math.min(start + colGroupSize, varCount);
+      colGroups.push(headerVarIdx.slice(start, end));
+    }
+  }
+  const totalColGroups = colGroups.length;
+
+  const totalRowPages  = Math.max(1, Math.ceil(rows.length / pageSize));
+  let rowPage = 0;
+  let colGroup = 0;
+
+  const pageInfoEl = document.getElementById('pageInfo');
+
+  function applyColumnVisibility(){
+    // Xây set "body index" cần hiển thị từ nhóm header đang chọn
+    const currentHeaderIdx = new Set(colGroups[colGroup] || headerVarIdx);
+    const showBodyIdx = new Set();
+
+    // Giữ 4 cột cố định + cột tổng chung
+    for (let i=0; i<fixedPrefixCount; i++) showBodyIdx.add(i);
+    showBodyIdx.add(totalBodyIndex);
+
+ (colGroups[colGroup] || headerVarIdx).forEach(hIdx => {
+   const headerIndex = btToHeaderIndex[hIdx];           // chuyển chỉ số btCells -> headerCells
+   const bIdx = headerToBodyIndex[headerIndex];         // rồi mới map header -> body
+   if (typeof bIdx === 'number') showBodyIdx.add(bIdx);
+ });
+
+    // Nếu VÒNG nào đang gộp, giữ cột TỔNG-VÒNG luôn hiển thị
+groupsMeta.forEach(meta => {
+  if (meta.totalTh && meta.totalTh.classList.contains('g-total-visible')) {
+    showBodyIdx.add(meta.bodyTotalIndex);
+  }
+});
+
+
+    // Ẩn/hiện HEADER hàng 2 (chỉ bài thi)
+    btCells.forEach((th, i) => {
+      if (th.classList.contains('g-collapsed')) { th.style.display = 'none'; return; }
+      th.style.display = (totalColGroups <= 1 || currentHeaderIdx.has(i)) ? '' : 'none';
+    });
+
+    // CẬP NHẬT HEADER VÒNG: co/giãn theo số bài đang hiển thị
+    groupsMeta.forEach(meta => {
+      if (meta.collapsed) {
+        meta.gth.style.display = '';
+        meta.gth.colSpan = 1;
+        return;
+      }
+      let visibleCount = 0;
+      meta.tests.forEach(th => {
+        const idx = btCells.indexOf(th);
+        if (idx !== -1 && (totalColGroups <= 1 || currentHeaderIdx.has(idx)) && th.style.display !== 'none') {
+          visibleCount++;
+        }
+      });
+      if (visibleCount > 0) {
+        meta.gth.style.display = '';
+        meta.gth.colSpan = visibleCount;
+      } else {
+        meta.gth.style.display = 'none';
+        meta.gth.colSpan = meta.originalColspan;
+      }
+    });
+
+    // Ẩn/hiện BODY theo showBodyIdx (tôn trọng cột đã gộp)
+    rows.forEach(tr => {
+      const cells = Array.from(tr.cells);
+      cells.forEach((td, i) => {
+        if (td.classList.contains('g-collapsed')) { td.style.display = 'none'; return; }
+        td.style.display = showBodyIdx.has(i) ? '' : 'none';
+      });
+    });
+  } // <--- đóng applyColumnVisibility()
+
+  function showRowPage(){
+    // phân trang theo hàng
+    rows.forEach(r => r.style.display = 'none');
+    const start = rowPage * pageSize;
+    const end = Math.min(start + pageSize, rows.length);
+    for(let i=start; i<end; i++) rows[i].style.display = '';
+
+    applyColumnVisibility();
+
+    if(pageInfoEl){
+      const cg = totalColGroups <= 1 ? 1 : (colGroup + 1);
+      pageInfoEl.textContent = `Trang người ${rowPage+1}/${totalRowPages} • Nhóm cột ${cg}/${Math.max(1,totalColGroups)}`;
+    }
+  }
+
+  function advance(){
+    // Nếu không có quét ngang (<= colGroupSize) ⇒ chỉ chuyển trang theo hàng
+    if(totalColGroups <= 1){
+      rowPage = (rowPage + 1) % totalRowPages;
+    } else {
       colGroup++;
       if(colGroup >= totalColGroups){
         colGroup = 0;
         rowPage = (rowPage + 1) % totalRowPages;
       }
-
-      // === Thêm: đếm cho auto reset ===
-      stepsLeftToReset--;
-      if(stepsLeftToReset <= 0){
-        // Reset 1 lần để cập nhật điểm mới
-        window.location.reload();
-        return; // đề phòng chạy tiếp trong tick hiện tại
-      }
-
-      showRowPage();
     }
-
-    let timer = null;
-    function startTimer(){ stopTimer(); timer = setInterval(advance, intervalMs); }
-    function stopTimer(){ if(timer){ clearInterval(timer); timer = null; } }
-    function jumpNext(){ advance(); startTimer(); }
-
-    // Init
     showRowPage();
-    startTimer();
+  }
 
-    // Click bảng → sang nhóm cột kế (hết nhóm thì sang người kế)
-    table.addEventListener('click', jumpNext);
+  // Timer
+  let timer = null;
+  function startTimer(){ stopTimer(); timer = setInterval(advance, intervalMs); }
+  function stopTimer(){ if(timer){ clearInterval(timer); timer = null; } }
+  function jumpNext(){ advance(); startTimer(); }
 
-    // Phím tắt: → tiến nhóm, ← lùi nhóm (có lùi "chạm đuôi" tương ứng)
-    document.addEventListener('keydown', (e) => {
-      if(e.key === 'ArrowRight'){
-        e.preventDefault(); jumpNext();
-      } else if(e.key === 'ArrowLeft'){
-        e.preventDefault();
+  // Init
+  showRowPage();
+  startTimer();
+
+  // Click bảng (trừ click vào tiêu đề Vòng) => next
+  table.addEventListener('click', (e) => {
+    if(e.target.closest && e.target.closest('.vt-group')) return;
+    jumpNext();
+  });
+
+  // Phím điều hướng
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'ArrowRight'){
+      e.preventDefault(); jumpNext();
+    } else if(e.key === 'ArrowLeft'){
+      e.preventDefault();
+      if(totalColGroups <= 1){
+        rowPage = (rowPage - 1 + totalRowPages) % totalRowPages;
+      } else {
         colGroup--;
         if(colGroup < 0){
           colGroup = totalColGroups - 1;
           rowPage = (rowPage - 1 + totalRowPages) % totalRowPages;
         }
-        showRowPage(); startTimer();
       }
-    }, { passive: false });
-
-    // Pause khi hover controls (select), không ảnh hưởng bảng
-    const controls = document.querySelector('.controls');
-    if(controls){
-      controls.addEventListener('mouseenter', stopTimer);
-      controls.addEventListener('mouseleave', startTimer);
+      showRowPage(); startTimer();
     }
+  }, { passive: false });
 
-    // Giữ đúng hiển thị khi resize
-    window.addEventListener('resize', () => { showRowPage(); });
-  })();
+  // Dừng chạy khi rê chuột vùng controls (nếu có)
+  const controls = document.querySelector('.controls');
+  if(controls){
+    controls.addEventListener('mouseenter', stopTimer);
+    controls.addEventListener('mouseleave', startTimer);
+  }
+
+  // Toggle gộp/giãn xong thì vẫn giữ logic hiển thị
+  window.addEventListener('resize', showRowPage);
+})();

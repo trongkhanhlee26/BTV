@@ -24,6 +24,7 @@
 }
 
 
+
     .dist-bar {
         height: .75rem;
         width: 100%;
@@ -56,8 +57,16 @@
 {% block content %}
 
 <div id="dashboard" class="flex gap-6">
-    <!-- Sidebar: Import và Export -->
+    <!-- Sidebar: Tạo cuộc thi, Import và Export -->
     <aside class="sidebar p-4">
+        <div class="mt-2 p-3 bg-white/5 rounded-xl">
+            <div class="text-sm opacity-80 mb-2">Tạo cuộc thi</div>
+            <a href="/organize/competitions"
+                class="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg">
+                <img src="{% static 'icons/download.svg' %}" class="h-4 w-4" alt="">
+                <span>Tạo cuộc thi</span>
+            </a>
+        </div>
         <div class="mt-2 p-3 bg-white/5 rounded-xl">
             <div class="text-sm opacity-80 mb-2">Thêm danh sách</div>
             <a href="/import{% if contest %}?ct={{ contest.id }}{% endif %}"

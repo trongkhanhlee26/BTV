@@ -6,6 +6,33 @@ from django.db.models import Avg
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side  # <- thêm Border, Side
 from .models import CuocThi, VongThi, BaiThi, ThiSinh, PhieuChamDiem
 
+
+# --- helpers cho thời gian ---
+def _pick_time_value(obj):
+    """
+    Trích xuất thời gian (giây) từ một record PhieuChamDiem.
+    Hỗ trợ linh hoạt nhiều tên field khác nhau.
+    Trả về int(giây) hoặc None nếu không có.
+    """
+    CANDIDATES = ["thoiGian", "thoiGianGiay", "time_seconds", "time", "duration", "tongThoiGian"]
+    for k in CANDIDATES:
+        if hasattr(obj, k):
+            v = getattr(obj, k)
+            if v is None: 
+                continue
+            try:
+                # chấp nhận float/decimal → ép int giây
+                return int(round(float(v)))
+            except Exception:
+                pass
+    return None
+
+def _fmt_mmss(seconds: int | None) -> str:
+    if seconds is None:
+        return ""
+    m, s = divmod(max(0, int(seconds)), 60)
+    return f"{m:02d}:{s:02d}"
+
 def _score_type(bt) -> str:
     v = getattr(bt, "phuongThucCham", None)
     if v is None:
@@ -29,42 +56,70 @@ def _build_columns(ct: CuocThi):
 
     cols = []
     for b in bai_qs:
+        # tính max điểm để hiện trên header (giữ nguyên logic cũ)
         if _score_type(b) == "TIME":
             rules = list(b.time_rules.all()) if hasattr(b, "time_rules") else []
             b_max = max([r.score for r in rules], default=0)
         elif _score_type(b) == "TEMPLATE":
-            b_max = sum(
-                i.max_score
-                for s in b.template_sections.all()
-                for i in s.items.all()
-            )
+            b_max = sum(i.max_score for s in b.template_sections.all() for i in s.items.all())
         else:
             b_max = b.cachChamDiem
 
-        # >>> ĐỔI: tiêu đề 2 dòng cùng 1 ô (Vòng↵Bài thi)
+        # 1) Cột điểm (giữ tiêu đề 2 dòng để JS nhận diện là cột điểm)
         cols.append({
             "id": b.id,
             "code": b.ma,
+            "kind": "score",
             "title": f"{b.vongThi.tenVongThi}\n{b.tenBaiThi}",
             "max": b_max,
         })
+        # 2) Cột thời gian đi kèm (đặt ngay sau cột điểm)
+        cols.append({
+            "id": b.id,
+            "code": b.ma,
+            "kind": "time",
+            # tiêu đề rõ ràng: “Thời gian (BTxxx)” – có thể rút gọn nếu muốn
+            "title": f"Thời gian",
+            "max": None,
+        })
 
-    titles = ["STT", "Mã NV", "Họ tên"] + [c["title"] for c in cols]
+    titles = [c["title"] for c in cols]   # chỉ tiêu đề phần bài thi
     return cols, titles
 
-def _flatten(ct: CuocThi):
-    cols_meta, score_titles = _build_columns(ct)
-    info_titles = ['Đơn vị', 'Chi nhánh', 'Vùng', 'Nhóm', 'Email']
-    # Thêm nhãn "Tổng" ở cuối
-    columns = ['STT', 'Mã NV', 'Họ tên'] + info_titles + score_titles[3:] + ['Tổng']
 
-    scores = (
+def _flatten(ct: CuocThi):
+    cols_meta, titles_per_exam = _build_columns(ct)
+
+    # Info columns bạn đang dùng
+    info_titles = ['Đơn vị', 'Chi nhánh', 'Vùng', 'Nhóm', 'Email']
+
+    # Xây tiêu đề tổng cộng: 3 cột info cơ bản + 5 info + (cặp Điểm/Thời gian)* + Tổng
+    columns = ['STT', 'Mã NV', 'Họ tên'] + info_titles + titles_per_exam + ['Tổng']
+
+
+    # Map điểm trung bình theo (maNV, baiThi_id)
+    score_qs = (
         PhieuChamDiem.objects
-        .filter(cuocThi=ct, baiThi_id__in=[c["id"] for c in cols_meta])
+        .filter(cuocThi=ct)
         .values("thiSinh__maNV", "baiThi_id")
         .annotate(avg=Avg("diem"))
     )
-    score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in scores}
+    score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): (float(r["avg"]) if r["avg"] is not None else "") for r in score_qs}
+
+    # Lấy tất cả phiếu để tự bóc thời gian (vì tên field thời gian có thể khác nhau)
+    all_phieu = list(PhieuChamDiem.objects.filter(cuocThi=ct).select_related("thiSinh", "baiThi"))
+    time_map = {}  # (maNV, baiThi_id) -> một giá trị thời gian (ưu tiên nhỏ nhất nếu có nhiều lần)
+    for p in all_phieu:
+        key = (getattr(p.thiSinh, "maNV", None), getattr(p.baiThi, "id", None))
+        if key[0] is None or key[1] is None:
+            continue
+        t = _pick_time_value(p)  # giây hoặc None
+        if t is None:
+            continue
+        # nếu có nhiều bản ghi: lấy MIN (thường là tốt nhất), bạn có thể đổi sang MAX hay AVG tùy nghiệp vụ
+        cur = time_map.get(key)
+        if (cur is None) or (t < cur):
+            time_map[key] = t
 
     ts_qs = ThiSinh.objects.filter(cuocThi=ct).order_by("maNV").distinct()
     def _sv(x): return "" if x is None else str(x)
@@ -81,16 +136,26 @@ def _flatten(ct: CuocThi):
             _sv(getattr(ts, "nhom", "")),
             _sv(getattr(ts, "email", "")),
         ]
-        # cộng điểm theo từng bài
+
         total = 0.0
-        for c in cols_meta:
-            val = score_map.get((ts.maNV, c["id"]), "")
-            row.append(val)
-            if isinstance(val, (int, float)):
-                total += float(val)
-        # đẩy "Tổng" vào cuối hàng
+
+        # chỉ lấy mỗi bài thi 1 lần (theo các cột 'score')
+        bt_ids_in_order = [c["id"] for c in cols_meta if c.get("kind") == "score"]
+
+        for bt_id in bt_ids_in_order:
+            # 1) điểm
+            sc = score_map.get((ts.maNV, bt_id), "")
+            row.append(sc)
+            if isinstance(sc, (int, float)):
+                total += float(sc)
+
+            # 2) thời gian (mm:ss) – để trống nếu không có
+            tm_seconds = time_map.get((ts.maNV, bt_id))
+            row.append(_fmt_mmss(tm_seconds))
+
         row.append(total)
         rows.append(row)
+
     return columns, rows
 
 
@@ -102,7 +167,6 @@ def _flatten(ct: CuocThi):
 
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
-from openpyxl.styles import Alignment, Font, PatternFill
 from io import BytesIO
 def export_xlsx(request):
     ct_id = request.GET.get("ct")
@@ -123,13 +187,21 @@ def export_xlsx(request):
             kinds = ["info"] * len(columns)
     else:
         columns, rows = _flatten(ct)
-        # Tự tính kinds: 3 cột đầu (STT/Mã NV/Họ tên) + 5 cột info tiếp theo = info
-        # Các cột điểm là từ sau 8 cột info đến cột "Tổng" (cuối)
-        info_count = 3 + 5  # STT, Mã NV, Họ tên + (Đơn vị, Chi nhánh, Vùng, Nhóm, Email)
+
+        info_count = 3 + 5
         kinds = ["info"] * len(columns)
-        for j in range(info_count, len(columns) - 1):
+
+        j = info_count
+        # duyệt tới cột áp chót (cột cuối là "Tổng")
+        while j < len(columns) - 1:
+            # cặp 1: điểm
             kinds[j] = "score"
-        kinds[-1] = "score"  # "Tổng" tô giống cột điểm
+            j += 1
+            if j < len(columns) - 1:
+                # cặp 2: thời gian
+                kinds[j] = "time"
+                j += 1
+        kinds[-1] = "score"   # "Tổng"
 
 
     wb = Workbook()

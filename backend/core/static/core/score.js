@@ -120,10 +120,10 @@ function parseSeconds(v) {
 }
 
 // === TEMPLATE modal state ===
-let TPL_CTX = { btid: null, max: 0, items: {} };
+let TPL_CTX = { btid: null, max: 0, items: {}, errors: {} };
 
 function openTemplateModal(btid, code) {
-    TPL_CTX = { btid, max: 0, items: {} };
+    TPL_CTX = { btid, max: 0, items: {}, errors: {}};
     const title = document.getElementById('tplTitle');
     const body = document.getElementById('tplBody');
     const modal = document.getElementById('tplModal');
@@ -167,7 +167,7 @@ function openTemplateModal(btid, code) {
               <div>
                 <input type="number" min="0" max="${it.max}" step="1"
                   data-itemid="${it.id}" value="${(TPL_CACHE.items && TPL_CACHE.items[it.id]) ?? ''}"
-                  oninput="tplOnChange(${it.id}, ${it.max}, this.value)"
+                  oninput="tplOnChange(this, ${it.id}, ${it.max}, this.value)"
                   style="width:70px; padding:6px">
                 <small class="muted">/ ${it.max}</small>
               </div>
@@ -212,7 +212,7 @@ function openTemplateModal(btid, code) {
             document.querySelectorAll('#tplBody input[data-itemid]').forEach(el => {
               const id  = parseInt(el.dataset.itemid, 10);
               const max = parseInt(el.getAttribute('max') || '0', 10);
-              if (el.value !== '') tplOnChange(id, max, el.value);
+              if (el.value !== '') tplOnChange(el, id, max, el.value);
             });
 
             // Prefill thời gian cho wheel từ cache
@@ -275,14 +275,23 @@ function closeTplModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function tplOnChange(itemId, maxVal, raw) {
-    let v = parseInt(raw || '0', 10);
-    if (isNaN(v) || v < 0) v = 0;
-    if (v > maxVal) v = maxVal;
-    TPL_CTX.items[itemId] = v;
+function tplOnChange(el, itemId, maxVal, raw) {
+  const vRaw = Number(raw);
+  const invalid = Number.isNaN(vRaw) || vRaw < 0 || vRaw > maxVal;
+  // đánh dấu lỗi tại ô nhập
+  if (invalid) {
+    el.classList.add('invalid');
+    TPL_CTX.errors[itemId] = `0..${maxVal}`;
+    // KHÔNG ghi vào items khi lỗi, để tổng không “tự kẹp về max”
+    delete TPL_CTX.items[itemId];
+  } else {
+    el.classList.remove('invalid');
+    delete TPL_CTX.errors[itemId];
+    TPL_CTX.items[itemId] = vRaw;
+  }
 
     let total = 0;
-    for (const k in TPL_CTX.items) total += TPL_CTX.items[k] || 0;
+    for (const k in TPL_CTX.items) total += (Number(TPL_CTX.items[k]) || 0);
     const totalEl = document.getElementById('tplTotal');
     if (totalEl) totalEl.textContent = String(total);
 }
@@ -295,6 +304,24 @@ function saveTplScores() {
 
   const ctId = document.querySelector('[name="ct"]')?.value || null;
   const time = document.getElementById('tplTimeInput')?.value || '00:00';
+
+  let hasError = false;
+  document.querySelectorAll('#tplBody input[data-itemid]').forEach(el => {
+    const id  = parseInt(el.dataset.itemid, 10);
+    const max = parseInt(el.getAttribute('max') || '0', 10);
+    const v   = el.value.trim();
+    const num = Number(v);
+    const invalid = v === '' || Number.isNaN(num) || num < 0 || num > max;
+    if (invalid) {
+      el.classList.add('invalid');
+      TPL_CTX.errors[id] = `0..${max}`;
+      hasError = true;
+    }
+  });
+  if (hasError || Object.keys(TPL_CTX.errors).length > 0) {
+    showToast('Có mục điểm không hợp lệ (chỉ cho phép trong khoảng cho trước).', true);
+    return; // ⛔ không lưu, không đóng modal
+  }
 
   // tính tổng từ TPL_CTX.items
   let total = 0;

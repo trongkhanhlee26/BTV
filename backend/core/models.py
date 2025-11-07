@@ -17,11 +17,11 @@ def generate_code(model, prefix):
 class ThiSinh(models.Model):
     maNV = models.CharField(max_length=20, primary_key=True)
     hoTen = models.CharField(max_length=100)
-    chiNhanh = models.CharField(max_length=100)
+    chiNhanh = models.CharField(max_length=100, null=True)
     vung = models.CharField(max_length=100, blank=True, null=True)
     donVi = models.CharField(max_length=100, blank=True, null=True)
-    email = models.EmailField(unique=True)
-    nhom = models.CharField(max_length=50)
+    email = models.EmailField(unique=True, null=True)
+    nhom = models.CharField(max_length=50, null=True)
     cuocThi = models.ManyToManyField(
         'CuocThi',
         through='ThiSinhCuocThi',
@@ -52,6 +52,12 @@ class GiamKhao(models.Model):
     maNV = models.CharField(max_length=20, primary_key=True)
     hoTen = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
+
+    ROLE_CHOICES = (
+        ("ADMIN", "Admin"),
+        ("JUDGE", "Giám khảo"),
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default="JUDGE", db_index=True, null=True)
 
     def __str__(self):
         return f"{self.maNV} - {self.hoTen}"
@@ -103,6 +109,19 @@ class BaiThi(models.Model):
 
     def __str__(self):
         return f"{self.ma} - {self.tenBaiThi}"
+    
+class GiamKhaoBaiThi(models.Model):  
+    giamKhao = models.ForeignKey('GiamKhao', on_delete=models.CASCADE, related_name='phan_cong_bai_thi') 
+    baiThi = models.ForeignKey('BaiThi', on_delete=models.CASCADE, related_name='giam_khao_duoc_chi_dinh') 
+    assigned_at = models.DateTimeField(auto_now_add=True) 
+
+    class Meta:  
+        unique_together = ('giamKhao', 'baiThi') 
+        indexes = [models.Index(fields=['giamKhao', 'baiThi'])]
+
+    def __str__(self): 
+        return f"{self.giamKhao.maNV} → {self.baiThi.ma}"
+
 class BaiThiTimeRule(models.Model):
     baiThi = models.ForeignKey(BaiThi, on_delete=models.CASCADE, related_name="time_rules")
     start_seconds = models.IntegerField()  # inclusive
@@ -168,6 +187,12 @@ class PhieuChamDiem(models.Model):
             # chỉ áp trần khi là thang điểm
             if self.diem > self.baiThi.cachChamDiem:
                 raise ValueError("Điểm vượt quá điểm tối đa của bài thi!")
+            
+        if getattr(self.giamKhao, "role", "JUDGE") != "ADMIN":
+            from .models import GiamKhaoBaiThi
+            allowed = GiamKhaoBaiThi.objects.filter(giamKhao=self.giamKhao, baiThi=self.baiThi).exists()
+            if not allowed:
+                raise PermissionError("Giám khảo chưa được admin chỉ định cho bài thi này.")
 
         # (TIME/TEMPLATE sẽ được quy đổi/validate ở bước 3B)
         self.updated_at = timezone.now()
