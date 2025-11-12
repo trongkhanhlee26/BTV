@@ -19,8 +19,18 @@
   // bỏ 0 ở đầu nhưng giữ lại "0"
   return t.replace(/^0+(?=\d)/, '');
 }
-  // --- Utilities ---
-  const fmtHeader = (title) => (title ?? '').toString().replace(/\n/g, '<br>');
+// --- Utilities ---
+const fmtHeader = (title) => (title ?? '').toString().replace(/\n/g, '<br>');
+
+// CỘT ĐIỂM = tiêu đề có xuống dòng "Vòng\nBài thi" (và không phải chữ "Thời gian")
+const isScoreCol = (title) => !!title && title.includes('\n') && title !== 'Thời gian';
+
+// CỘT THỜI GIAN: là "Thời gian" và đứng NGAY SAU một cột điểm
+const isTimeColAt = (idx) => {
+  const t = columns[idx];
+  return t === 'Thời gian' && idx > 0 && isScoreCol(columns[idx - 1]);
+};
+
 
   // --- Render header + filter ---
   columns.forEach((name, i) => {
@@ -28,9 +38,16 @@
     th.innerHTML = fmtHeader(name);
     th.dataset.index = i;
     // sort
-    th.style.cursor = 'pointer';
-    th.addEventListener('click', () => toggleSort(i));
-    head.appendChild(th);
+// sort (tắt sort ở cột Thời gian)
+if (isTimeColAt(i)) {
+  th.style.cursor = 'default';
+  th.title = 'Sắp xếp theo thời gian đã tắt';
+} else {
+  th.style.cursor = 'pointer';
+  th.addEventListener('click', () => toggleSort(i));
+}
+head.appendChild(th);
+
 
     // filter inputs
     const fh = document.createElement('th');
@@ -124,15 +141,46 @@ function applyFilters() {
       th.innerHTML = fmtHeader(base + (j === sortState.index ? (sortState.dir === 1 ? ' ▲' : ' ▼') : ''));
     });
   }
-  function compare(i, dir) {
-    return (a, b) => {
-      const va = a.r[i], vb = b.r[i];
-      const na = parseFloat(va), nb = parseFloat(vb);
-      const isNum = !isNaN(na) && !isNaN(nb);
-      if (isNum) return (na - nb) * dir || (a._i - b._i);
-      return (String(va ?? '')).localeCompare(String(vb ?? ''), 'vi', { numeric: true }) * dir || (a._i - b._i);
-    };
-  }
+function parseTimeToSec(v) {
+  if (v === null || v === undefined) return Infinity;
+  const s = String(v).trim();
+  // mm:ss
+  const m = s.match(/^(\d+):(\d{2})$/);
+  if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  // fallback: nếu là số (giây)
+  const f = parseFloat(s);
+  return Number.isFinite(f) ? f : Infinity;
+}
+
+function compare(i, dir) {
+  return (a, b) => {
+    const va = a.r[i], vb = b.r[i];
+    const na = parseFloat(va), nb = parseFloat(vb);
+    const bothNum = Number.isFinite(na) && Number.isFinite(nb);
+
+    // So sánh chính theo cột đang chọn (giữ hành vi cũ)
+    let primary = 0;
+    if (bothNum) {
+      primary = (na - nb) * dir;
+    } else {
+      primary = (String(va ?? '')).localeCompare(String(vb ?? ''), 'vi', { numeric: true }) * dir;
+    }
+    if (primary !== 0) return primary;
+
+    // === TIE-BREAK: nếu đang sort ở CỘT ĐIỂM thì so tiếp THỜI GIAN của chính bài đó (cột kế bên) ===
+    if (isScoreCol(columns[i])) {
+      const timeIdx = i + 1;      // cột "Thời gian" luôn ngay sau cột Điểm
+      const ta = parseTimeToSec(a.r[timeIdx]);
+      const tb = parseTimeToSec(b.r[timeIdx]);
+      // tie-break thời gian LUÔN tăng dần (ít giây hơn tốt hơn)
+      if (ta !== tb) return ta - tb;
+    }
+
+    // Cuối cùng: giữ thứ tự ổn định
+    return a._i - b._i;
+  };
+}
+
 
   // --- Auto-fit width theo nội dung ---
 function autoFit() {
@@ -253,10 +301,6 @@ function applySticky() {
   // fonts có thể load chậm → đo lại sau một vòng frame
   requestAnimationFrame(() => { autoFit(); applySticky(); });
 
-    function isScoreCol(headerText) {
-    // Cột điểm có tiêu đề 2 dòng: "Vòng\nBài thi"
-    return String(headerText || '').includes('\n');
-  }
 
   function buildVisiblePayload() {
     const colKinds = (window.EXPORT_COLUMNS || []).map(h => isScoreCol(h) ? 'score' : 'info');
