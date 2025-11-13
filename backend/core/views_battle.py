@@ -92,51 +92,50 @@ def manage_battle_view(request):
 # ===== API: đọc trạng thái cặp đấu hiện tại từ DB =====
 
 def pairing_state(request):
+    
     ct = _find_chung_ket_competition()
     if not ct:
-        data = {"left": [], "right": [], "ts": 0, "by": "db"}
-        return JsonResponse(data)
+        return JsonResponse({"pairs": []})
 
-    pairs = (
+    pairs_qs = (
         CapThiDau.objects
         .filter(cuocThi=ct, active=True)
         .order_by("thuTuThiDau", "id")
         .prefetch_related("members__thiSinh")
     )
 
-    left_ids = []
-    right_ids = []
+    result = []
+    for pair in pairs_qs:
+        left_members = []
+        right_members = []
 
-    for pair in pairs:
-        members = list(pair.members.all())
-        # Bên trái
-        left_member = [
-            m for m in members if m.side == "L"
-        ]
-        left_member.sort(key=lambda m: (m.slot, m.id))
-        if left_member:
-            left_ids.append(left_member[0].thiSinh.maNV)
+        for m in pair.members.all():
+            item = {
+                "maNV": m.thiSinh.maNV,
+                "hoTen": m.thiSinh.hoTen,
+                # ưu tiên image_url trên ThiSinhCapThiDau, nếu trống thì lấy từ thiSinh.hinhAnh (nếu có)
+                "image_url": m.display_image_url,
+            }
+            if m.side == "L":
+                left_members.append((m.slot or 0, item))
+            else:
+                right_members.append((m.slot or 0, item))
 
-        # Bên phải
-        right_member = [
-            m for m in members if m.side == "R"
-        ]
-        right_member.sort(key=lambda m: (m.slot, m.id))
-        if right_member:
-            right_ids.append(right_member[0].thiSinh.maNV)
+        # sort theo slot để sau này NvsN vẫn đúng thứ tự
+        left_members = [item for _, item in sorted(left_members, key=lambda t: (t[0],))]
+        right_members = [item for _, item in sorted(right_members, key=lambda t: (t[0],))]
 
-    # Đảm bảo 2 list cùng độ dài (nếu thiếu 1 bên thì cắt cho cân)
-    n = min(len(left_ids), len(right_ids))
-    left_ids = left_ids[:n]
-    right_ids = right_ids[:n]
+        result.append({
+            "id": pair.id,
+            "order": pair.thuTuThiDau,
+            "maCapDau": pair.maCapDau,
+            "tenCapDau": pair.tenCapDau or "",
+            "left": left_members,
+            "right": right_members,
+        })
 
-    data = {
-        "left": left_ids,
-        "right": right_ids,
-        "ts": 0,      # nếu muốn, có thể thêm trường updated_at vào CapThiDau để lấy ts thật
-        "by": "db",
-    }
-    return JsonResponse(data)
+    return JsonResponse({"pairs": result})
+
 
 
 # ===== API: lưu cấu hình cặp đấu vào DB =====

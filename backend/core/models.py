@@ -1,4 +1,6 @@
 from django.db import models
+import re
+from urllib.parse import urlparse, parse_qs
 
 # Create your models here.
 from django.db import models
@@ -296,6 +298,42 @@ class ThiSinhCapThiDau(models.Model):
         blank=True,
         help_text="URL ảnh (trên Drive) của thí sinh trong trận này"
     )
+
+    def _normalize_drive_url(self, url: str) -> str:
+        if not url:
+            return ""
+
+        if "drive.google.com" not in url:
+            return url
+
+        file_id = None
+
+        # /file/d/<id>/
+        m = re.search(r"/file/d/([^/]+)", url)
+        if m:
+            file_id = m.group(1)
+        else:
+            # ?id=<id>
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            if "id" in qs and qs["id"]:
+                file_id = qs["id"][0]
+
+        # Nếu vẫn không lấy được id (ví dụ link folders/...), trả lại url gốc
+        if not file_id:
+            return url
+
+        return f"https://drive.google.com/uc?export=view&id={file_id}"
+
+    @property
+    def display_image_url(self) -> str:
+        """
+        URL cuối cùng để dùng cho <img>.
+        Ưu tiên: image_url của chính record này -> hinhAnh của ThiSinh (nếu có).
+        Tự động convert các dạng link Google Drive thành link xem ảnh trực tiếp.
+        """
+        raw = self.image_url or getattr(self.thiSinh, "hinhAnh", "") or ""
+        return self._normalize_drive_url(raw)
 
     class Meta:
         unique_together = ("pair", "side", "slot")

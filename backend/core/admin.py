@@ -73,13 +73,17 @@ class BaiThiTemplateItemAdmin(admin.ModelAdmin):
     list_filter = ("section__baiThi",)
     search_fields = ("content", "section__title", "section__baiThi__ma")
 
+class ThiSinhCapThiDauInline(admin.TabularInline):
+    model = ThiSinhCapThiDau
+    extra = 0
+    fields = ("side", "slot", "thiSinh", "image_url")
 @admin.register(CapThiDau)
 class CapThiDauAdmin(admin.ModelAdmin):
     list_display = ("maCapDau", "cuocThi", "vongThi", "thuTuThiDau", "active", "created_at")
     list_filter = ("cuocThi", "vongThi", "active")
     search_fields = ("maCapDau", "cuocThi__ma", "cuocThi__tenCuocThi")
     ordering = ("cuocThi", "thuTuThiDau")
-
+    inlines = [ThiSinhCapThiDauInline]
 
 @admin.register(ThiSinhCapThiDau)
 class ThiSinhCapThiDauAdmin(admin.ModelAdmin):
