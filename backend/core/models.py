@@ -197,3 +197,112 @@ class PhieuChamDiem(models.Model):
         # (TIME/TEMPLATE sẽ được quy đổi/validate ở bước 3B)
         self.updated_at = timezone.now()
         super().save(*args, **kwargs)
+
+class CapThiDau(models.Model):
+    """
+    Một cặp / một trận đối kháng.
+    Hiện tại mỗi pair = 1 vs 1.
+    Sau này vẫn dùng lại được cho 2 vs 2, N vs N (nhiều member mỗi bên).
+    """
+    cuocThi = models.ForeignKey(
+        CuocThi,
+        on_delete=models.CASCADE,
+        related_name="battle_pairs"
+    )
+    vongThi = models.ForeignKey(
+        VongThi,
+        on_delete=models.CASCADE,
+        related_name="battle_pairs",
+        null=True,
+        blank=True,
+        help_text="Có thể gắn với vòng thi (VD: Chung kết, Bán kết...)"
+    )
+
+    maCapDau = models.CharField(
+        max_length=20,
+        unique=True,
+        editable=False,
+        db_index=True
+    )
+    tenCapDau = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Tên hiển thị cặp đấu (nếu muốn đặt). VD: Bảng A - Trận 1"
+    )
+    thuTuThiDau = models.PositiveIntegerField(
+        default=1,
+        help_text="Thứ tự hiển thị cặp đấu"
+    )
+    active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Tự sinh mã BK001, BK002...
+        if not self.maCapDau:
+            from django.db.models import Max
+            last_code = CapThiDau.objects.aggregate(max_code=Max("maCapDau"))["max_code"]
+            if not last_code:
+                self.maCapDau = "CK001"
+            else:
+                try:
+                    num = int(last_code[2:]) + 1
+                except ValueError:
+                    num = 1
+                self.maCapDau = f"CK{num:03d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.maCapDau} - {self.cuocThi.tenCuocThi} (#{self.thuTuThiDau})"
+
+
+class ThiSinhCapThiDau(models.Model):
+    """
+    Một thí sinh cụ thể nằm trong một cặp đấu (ở bên trái / phải).
+    - 1 cặp 1vs1: mỗi bên (L/R) có 1 member (slot = 1).
+    - 2vs2: mỗi bên có 2 member (slot = 1,2).
+    - NvsN: cứ thế tăng slot.
+    """
+    SIDE_CHOICES = (
+        ("L", "Bên trái"),
+        ("R", "Bên phải"),
+    )
+
+    pair = models.ForeignKey(
+        CapThiDau,
+        on_delete=models.CASCADE,
+        related_name="members"
+    )
+    thiSinh = models.ForeignKey(
+        ThiSinh,
+        on_delete=models.CASCADE,
+        related_name="battle_entries"
+    )
+    side = models.CharField(
+        max_length=1,
+        choices=SIDE_CHOICES,
+        help_text="L = đội/trận bên trái, R = đội bên phải"
+    )
+    slot = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Thứ tự trong đội (dùng cho 2vs2, NvsN)"
+    )
+
+    image_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="URL ảnh (trên Drive) của thí sinh trong trận này"
+    )
+
+    class Meta:
+        unique_together = ("pair", "side", "slot")
+        indexes = [
+            models.Index(fields=["pair", "side"]),
+            models.Index(fields=["thiSinh"]),
+        ]
+
+    def __str__(self):
+        return f"{self.pair.maCapDau} - {self.get_side_display()} - {self.thiSinh.maNV} (slot {self.slot})"

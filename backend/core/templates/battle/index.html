@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Đối kháng{% endblock %}
+<!doctype html>
+<html lang="vi">
+
+{% block head_extra %}
+  <style>
+    .center-wrap{
+      min-height: calc(100vh - 120px);
+      display:flex; align-items:center; justify-content:center;
+      padding:24px; box-sizing:border-box;
+    }
+    .card{
+      position:relative;
+      background: rgba(17,24,39,.28);
+      border:1px solid rgba(255,255,255,.18);
+      border-radius:16px;
+      padding:16px; box-sizing:border-box;
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      backdrop-filter: blur(14px) saturate(120%);
+      box-shadow: 0 12px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+      outline: 1px solid rgba(255,255,255,.06);
+      width: min(1080px, 96vw);
+      min-height: min(640px, 80vh);
+      color:#e5e7eb;
+    }
+    .card::before{
+      content:""; position:absolute; inset:0; border-radius:inherit;
+      background: radial-gradient(120% 60% at 10% -10%, rgba(255,255,255,.20), rgba(255,255,255,.06) 40%, transparent 60%);
+      pointer-events:none; mix-blend-mode:screen;
+    }
+
+    .title{ font-weight:700; font-size:20px; margin-bottom:8px; }
+    .subtitle{ font-size:13px; opacity:.85; margin-bottom:12px; }
+
+    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .panel{
+      background: rgba(0,0,0,.15); border:1px solid rgba(255,255,255,.08);
+      border-radius:12px; padding:12px;
+    }
+    .panel h3{ margin:0 0 8px 0; font-size:16px; }
+    .list{ display:flex; flex-direction:column; gap:8px; }
+    .badge{
+      display:flex; gap:10px; align-items:center;
+      background: rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12);
+      border-radius:999px; padding:8px 12px; font-size:13px;
+    }
+    .meta{ font-size:12px; opacity:.8; }
+    .empty{ opacity:.7; font-style:italic; }
+
+    .counts{ position:absolute; top:12px; right:16px; font-size:14px; opacity:.9; }
+
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="center-wrap">
+    <div class="card">
+      <div class="title">Đối kháng</div>
+      <div class="subtitle">Khi quản trị lưu cấu hình bên trang Quản lý, danh sách bên dưới sẽ tự cập nhật realtime.</div>
+      <div class="counts" id="countInfo">Trái: 0 — Phải: 0</div>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>Đội Trái</h3>
+          <div id="leftList" class="list"><div class="empty">Chưa có thí sinh</div></div>
+        </div>
+        <div class="panel">
+          <h3>Đội Phải</h3>
+          <div id="rightList" class="list"><div class="empty">Chưa có thí sinh</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id)=> document.getElementById(id);
+    const el = { left: $("leftList"), right: $("rightList"), count: $("countInfo") };
+
+    // (Tùy chọn) Nếu muốn hiển thị tên thay vì mã, có thể preload mapping từ server.
+    // Tạm thời chỉ render mã NV; nếu muốn tên, mình có thể nhúng danh sách DATA giống manage.html.
+
+    function renderList(target, ids){
+      if (!ids || ids.length === 0){
+        target.innerHTML = '<div class="empty">Chưa có thí sinh</div>';
+        return;
+      }
+      target.innerHTML = ids.map(id=>`
+        <div class="badge">
+          <strong>${id}</strong>
+        </div>
+      `).join("");
+    }
+
+    function applyState(state){
+      const L = state.left || [], R = state.right || [];
+      renderList(el.left, L);
+      renderList(el.right, R);
+      el.count.textContent = `Trái: ${L.length} — Phải: ${R.length}`;
+    }
+
+    // 1) Lấy trạng thái ban đầu
+    fetch("/battle/pairing/state").then(r=>r.json()).then(applyState).catch(()=>{});
+
+    // 2) Mở WebSocket để nhận realtime
+    (function openWS(){
+      const protocol = (location.protocol === "https:") ? "wss" : "ws";
+      const ws = new WebSocket(`${protocol}://${location.host}/ws/battle/ck/`);
+
+      ws.onmessage = (evt)=>{
+        try{ const data = JSON.parse(evt.data); applyState(data); }
+        catch(e){}
+      };
+      ws.onclose = ()=>{ setTimeout(openWS, 1500); }; // auto reconnect
+    })();
+  </script>
+{% endblock %}

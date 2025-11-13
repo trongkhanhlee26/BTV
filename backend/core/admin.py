@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     ThiSinh, GiamKhao, CuocThi, VongThi, BaiThi, PhieuChamDiem,
-    BaiThiTemplateSection, BaiThiTemplateItem,
+    BaiThiTemplateSection, BaiThiTemplateItem, CapThiDau, ThiSinhCapThiDau
 )
 
 @admin.register(ThiSinh)
@@ -49,7 +49,7 @@ class VongThiAdmin(admin.ModelAdmin):
 @admin.register(BaiThi)
 class BaiThiAdmin(admin.ModelAdmin):
     list_display = ("ma", "tenBaiThi", "cachChamDiem", "vongThi", "giam_khao")
-    search_fields = ("maBaiThi", "tenBaiThi")
+    search_fields = ("ma", "tenBaiThi")
     list_filter = ("vongThi",)
 
     def giam_khao(self, obj):
@@ -72,3 +72,17 @@ class BaiThiTemplateItemAdmin(admin.ModelAdmin):
     list_display = ("id", "section", "stt", "content", "max_score")
     list_filter = ("section__baiThi",)
     search_fields = ("content", "section__title", "section__baiThi__ma")
+
+@admin.register(CapThiDau)
+class CapThiDauAdmin(admin.ModelAdmin):
+    list_display = ("maCapDau", "cuocThi", "vongThi", "thuTuThiDau", "active", "created_at")
+    list_filter = ("cuocThi", "vongThi", "active")
+    search_fields = ("maCapDau", "cuocThi__ma", "cuocThi__tenCuocThi")
+    ordering = ("cuocThi", "thuTuThiDau")
+
+
+@admin.register(ThiSinhCapThiDau)
+class ThiSinhCapThiDauAdmin(admin.ModelAdmin):
+    list_display = ("pair", "side", "slot", "thiSinh", "image_url")
+    list_filter = ("pair__cuocThi", "side")
+    search_fields = ("thiSinh__maNV", "thiSinh__hoTen", "pair__maCapDau")
