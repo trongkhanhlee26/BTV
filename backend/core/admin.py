@@ -49,7 +49,7 @@ class VongThiAdmin(admin.ModelAdmin):
 @admin.register(BaiThi)
 class BaiThiAdmin(admin.ModelAdmin):
     list_display = ("ma", "tenBaiThi", "cachChamDiem", "vongThi", "giam_khao")
-    search_fields = ("maBaiThi", "tenBaiThi")
+    search_fields = ("ma", "tenBaiThi")
     list_filter = ("vongThi",)
 
     def giam_khao(self, obj):
@@ -58,7 +58,7 @@ class BaiThiAdmin(admin.ModelAdmin):
 @admin.register(PhieuChamDiem)
 class PhieuChamDiemAdmin(admin.ModelAdmin):
     list_display = ("maPhieu", "thiSinh", "giamKhao", "baiThi", "diem", "maCuocThi", "thoiGian", "updated_at")
-    search_fields = ("thiSinh__maNV", "giamKhao__maNV", "baiThi__maBaiThi", "maCuocThi")
+    search_fields = ("thiSinh__maNV", "giamKhao__maNV", "baiThi__ma", "maCuocThi")
     list_filter = ("maCuocThi", "baiThi")
     
 @admin.register(BaiThiTemplateSection)
@@ -72,3 +72,11 @@ class BaiThiTemplateItemAdmin(admin.ModelAdmin):
     list_display = ("id", "section", "stt", "content", "max_score")
     list_filter = ("section__baiThi",)
     search_fields = ("content", "section__title", "section__baiThi__ma")
+
+    # core/admin.py
+from .models import BanGiamDoc  # ADD
+
+@admin.register(BanGiamDoc)
+class BanGiamDocAdmin(admin.ModelAdmin):
+    list_display = ("maBGD", "ten", "token", "created_at")
+    search_fields = ("maBGD", "ten", "token")

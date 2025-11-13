@@ -5,6 +5,29 @@ from django.db import models
 from django.utils import timezone
 from django.db.models import Max, SET_NULL
 from django.core.validators import MinValueValidator
+import secrets
+import string
+
+def _gen_token_20():
+    # 20 ký tự [A-Za-z0-9] an toàn
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(20))
+
+class BanGiamDoc(models.Model):
+    maBGD = models.CharField(primary_key=True, max_length=20)  # "BGD001",...
+    ten = models.CharField(max_length=255)
+    token = models.CharField(max_length=32, unique=True, editable=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            # phát sinh token 20 ký tự
+            self.token = _gen_token_20()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.maBGD} — {self.ten}"
 # Helper để sinh mã tự động CTxxx, VTxxx, BTxxx
 def generate_code(model, prefix):
     last_code = model.objects.aggregate(max_code=Max("ma"))["max_code"]
