@@ -89,13 +89,22 @@ def ranking_view(request):
 
     # 3) Map điểm
     all_test_ids = [t["id"] for g in groups for t in g["tests"]]
-    score_qs = (
+    score_qs = list(
         PhieuChamDiem.objects
         .filter(cuocThi=selected_ct, baiThi_id__in=all_test_ids)
         .values("thiSinh__maNV", "baiThi_id")
         .annotate(avg=Avg("diem"))
     )
     score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in score_qs}
+
+    # Đếm số bài thi đã được chấm của từng thí sinh
+    # (mỗi cặp thí sinh–bài thi tính 1 lần)
+    done_count_map = {}
+    for r in score_qs:
+        key = r["thiSinh__maNV"]
+        done_count_map[key] = done_count_map.get(key, 0) + 1
+
+    total_tests = len(all_test_ids)
 
     # 4) Thí sinh
     ts_m2m = ThiSinh.objects.filter(cuocThi=selected_ct)
@@ -120,6 +129,8 @@ def ranking_view(request):
             groups_view.append({"scores": g_scores, "total": g_sum})
             total_sum += g_sum
 
+        done = done_count_map.get(ts.maNV, 0)
+
         rows.append({
             "maNV": ts.maNV,
             "hoTen": ts.hoTen,
@@ -127,6 +138,8 @@ def ranking_view(request):
             "groups_view": groups_view,
             "total": total_sum,
             "total_time": time_sum_map.get(ts.maNV),  # None nếu không có TIME
+            "done": done,
+            "total_tests": total_tests,
         })
 
     # Sort: điểm ↓, tổng thời gian ↑ (nếu có), mã NV ↑
@@ -146,4 +159,5 @@ def ranking_view(request):
         "total_max": total_max,
         "title": f"Xếp hạng — {selected_ct.ma} · {selected_ct.tenCuocThi}",
     })
+
 

@@ -26,6 +26,7 @@ const testsStartIndex  = fixedPrefixCount;
 // === Xây mapping header->body bằng cách duyệt tuần tự btRow ===
 const headerCells = Array.from(btRow.cells); // chỉ gồm: [..col-test..][..col-group-total..] (đan xen theo Vòng)
 const sampleCells = Array.from(rows[0].cells);
+const doneBodyIndex  = sampleCells.length - 2;
 const totalBodyIndex = sampleCells.length - 1; // cột Tổng cuối bảng
 
 let bodyCursor = testsStartIndex;
@@ -161,7 +162,8 @@ const groupsMeta = groupThs.map((gth, gi) => {
     const showBodyIdx = new Set();
 
     // Giữ 4 cột cố định + cột tổng chung
-    for (let i=0; i<fixedPrefixCount; i++) showBodyIdx.add(i);
+    for (let i = 0; i < fixedPrefixCount; i++) showBodyIdx.add(i);
+    showBodyIdx.add(doneBodyIndex);
     showBodyIdx.add(totalBodyIndex);
 
  (colGroups[colGroup] || headerVarIdx).forEach(hIdx => {

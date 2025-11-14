@@ -463,7 +463,7 @@ td.num { font-weight: 600; }
                 <table class="rank-table" id="rankTable" data-page-size="10" data-interval-ms="5000"
                     data-col-group-size="5">
 <thead>
-  <!-- Hàng 1: Vòng thi (gộp 4 cột cố định + Tổng bằng rowspan=2) -->
+  <!-- Hàng 1: Vòng thi (gộp 4 cột cố định + Đã chấm + Tổng, đều rowspan=2) -->
   <tr id="vtRow">
     <th class="col-rank" rowspan="2">STT</th>
     <th rowspan="2">Mã NV</th>
@@ -477,21 +477,23 @@ td.num { font-weight: 600; }
           colspan="{{ g.tests|length }}"
           style="cursor:pointer;font-weight:800;">
         {{ g.vong_name }}
-
       </th>
     {% endfor %}
 
+    <!-- Cột mới: Đã chấm / Tổng bài -->
+    <th rowspan="2">Đã chấm</th>
+
+    <!-- Cột Tổng điểm -->
     <th rowspan="2">Tổng</th>
   </tr>
 
-  <!-- Hàng 2: CHỈ các cột biến thiên (Bài thi + ô Tổng Vòng ẩn) -->
+  <!-- Hàng 2 giữ nguyên như cũ -->
   <tr id="btRow">
     {% for g in groups %}
       {% for t in g.tests %}
         <th class="col-test"
             data-group-index="{{ forloop.parentloop.counter0 }}"
             data-test-index="{{ t.col_index }}">
-          
           <div>{{ t.title }}</div>
         </th>
       {% endfor %}
@@ -510,7 +512,6 @@ td.num { font-weight: 600; }
   <td>{{ r.hoTen }}</td>
   <td>{{ r.donVi }}</td>
 
-  {# MỚI: duyệt từng Vòng, in các bài của Vòng rồi in Tổng Vòng ngay sau đó #}
   {% for gv in r.groups_view %}
     {% for s in gv.scores %}
       <td class="num col-test" data-kind="test">{{ s|floatformat:0 }}</td>
@@ -520,6 +521,12 @@ td.num { font-weight: 600; }
     </td>
   {% endfor %}
 
+  <!-- Cột mới: số bài đã chấm / tổng số bài trong cuộc thi -->
+  <td class="num col-done">
+    {{ r.done }}/{{ r.total_tests }}
+  </td>
+
+  <!-- Tổng điểm -->
   <td class="total num">{{ r.total|floatformat:0 }}</td>
 </tr>
 {% endfor %}

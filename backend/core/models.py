@@ -213,9 +213,30 @@ class PhieuChamDiem(models.Model):
             if self.diem > self.baiThi.cachChamDiem:
                 raise ValueError("Điểm vượt quá điểm tối đa của bài thi!")
             
-        if getattr(self.giamKhao, "role", "JUDGE") != "ADMIN":
+        # BGD (maBGD trùng maNV, ten trùng hoTen) luôn được chấm tự do
+        # cho cuộc thi "Chung Kết" (không cần phân công từng bài).
+        is_bgd = False
+        try:
+            is_bgd = BanGiamDoc.objects.filter(
+                maBGD=self.giamKhao.maNV,
+                ten__iexact=self.giamKhao.hoTen,
+            ).exists()
+        except Exception:
+            is_bgd = False
+
+        is_chung_ket = False
+        try:
+            tn = (self.cuocThi.tenCuocThi or "").strip().lower()
+            is_chung_ket = tn in ("chung kết", "chung ket")
+        except Exception:
+            is_chung_ket = False
+
+        if getattr(self.giamKhao, "role", "JUDGE") != "ADMIN" and not (is_bgd and is_chung_ket):
             from .models import GiamKhaoBaiThi
-            allowed = GiamKhaoBaiThi.objects.filter(giamKhao=self.giamKhao, baiThi=self.baiThi).exists()
+            allowed = GiamKhaoBaiThi.objects.filter(
+                giamKhao=self.giamKhao,
+                baiThi=self.baiThi
+            ).exists()
             if not allowed:
                 raise PermissionError("Giám khảo chưa được admin chỉ định cho bài thi này.")
 
