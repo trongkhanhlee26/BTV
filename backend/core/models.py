@@ -6,7 +6,8 @@ from urllib.parse import urlparse, parse_qs
 from django.db import models
 from django.utils import timezone
 from django.db.models import Max, SET_NULL
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models import Avg, Count
 import secrets
 import string
 
@@ -14,6 +15,36 @@ def _gen_token_20():
     # 20 ký tự [A-Za-z0-9] an toàn
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(20))
+
+def normalize_drive_url(url: str) -> str:
+    """
+    Helper chung để convert link Google Drive thành link ảnh trực tiếp.
+    Dùng chung cho ThiSinh (và các chỗ khác nếu cần sau này).
+    """
+    if not url:
+        return ""
+
+    if "drive.google.com" not in url:
+        return url
+
+    file_id = None
+
+    # /file/d/<id>/
+    m = re.search(r"/file/d/([^/]+)", url)
+    if m:
+        file_id = m.group(1)
+    else:
+        # ?id=<id>
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        if "id" in qs and qs["id"]:
+            file_id = qs["id"][0]
+
+    # Nếu vẫn không lấy được id (ví dụ link folders/...), trả lại url gốc
+    if not file_id:
+        return url
+
+    return f"https://drive.google.com/uc?export=view&id={file_id}"
 
 class BanGiamDoc(models.Model):
     maBGD = models.CharField(primary_key=True, max_length=20)  # "BGD001",...
@@ -53,6 +84,21 @@ class ThiSinh(models.Model):
         related_name='thiSinhs',
         blank=True
     )
+    image_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="URL ảnh (trên Drive) của thí sinh"
+    )
+    @property
+    def display_image_url(self) -> str:
+        """
+        URL cuối cùng dùng cho <img>.
+        Sau này nếu có trường khác (ví dụ hinhAnh) vẫn có thể ưu tiên thêm.
+        Hiện tại dùng image_url và convert link Drive nếu cần.
+        """
+        raw = self.image_url or ""
+        return normalize_drive_url(raw)
 
     def __str__(self):
         return f"{self.maNV} - {self.hoTen}"
@@ -64,7 +110,6 @@ class ThiSinhCuocThi(models.Model):
         unique_together = ('thiSinh', 'cuocThi')
 
     def __str__(self):
-        # đổi 'maNV' hoặc 'ma' tuỳ đúng tên trường trong model của bạn
         try:
             ts = getattr(self.thiSinh, 'maNV', self.thiSinh_id)
             ct = getattr(self.cuocThi, 'ma', self.cuocThi_id)
@@ -83,6 +128,13 @@ class GiamKhao(models.Model):
         ("JUDGE", "Giám khảo"),
     )
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default="JUDGE", db_index=True, null=True)
+
+    contestants_voted = models.ManyToManyField(
+        'ThiSinhCapThiDau',
+        through='BattleVote',
+        related_name='judges',
+        blank=True
+    )
 
     def __str__(self):
         return f"{self.maNV} - {self.hoTen}"
@@ -214,7 +266,6 @@ class PhieuChamDiem(models.Model):
                 raise ValueError("Điểm vượt quá điểm tối đa của bài thi!")
             
         if getattr(self.giamKhao, "role", "JUDGE") != "ADMIN":
-            from .models import GiamKhaoBaiThi
             allowed = GiamKhaoBaiThi.objects.filter(giamKhao=self.giamKhao, baiThi=self.baiThi).exists()
             if not allowed:
                 raise PermissionError("Giám khảo chưa được admin chỉ định cho bài thi này.")
@@ -314,50 +365,29 @@ class ThiSinhCapThiDau(models.Model):
         default=1,
         help_text="Thứ tự trong đội (dùng cho 2vs2, NvsN)"
     )
-
-    image_url = models.URLField(
-        max_length=500,
-        null=True,
-        blank=True,
-        help_text="URL ảnh (trên Drive) của thí sinh trong trận này"
-    )
-
-    def _normalize_drive_url(self, url: str) -> str:
-        if not url:
-            return ""
-
-        if "drive.google.com" not in url:
-            return url
-
-        file_id = None
-
-        # /file/d/<id>/
-        m = re.search(r"/file/d/([^/]+)", url)
-        if m:
-            file_id = m.group(1)
-        else:
-            # ?id=<id>
-            parsed = urlparse(url)
-            qs = parse_qs(parsed.query)
-            if "id" in qs and qs["id"]:
-                file_id = qs["id"][0]
-
-        # Nếu vẫn không lấy được id (ví dụ link folders/...), trả lại url gốc
-        if not file_id:
-            return url
-
-        return f"https://drive.google.com/uc?export=view&id={file_id}"
-
     @property
     def display_image_url(self) -> str:
         """
-        URL cuối cùng để dùng cho <img>.
-        Ưu tiên: image_url của chính record này -> hinhAnh của ThiSinh (nếu có).
-        Tự động convert các dạng link Google Drive thành link xem ảnh trực tiếp.
+        Lấy URL ảnh hiển thị từ ThiSinh.
+        Nếu ThiSinh có display_image_url thì dùng lại luôn.
         """
-        raw = self.image_url or getattr(self.thiSinh, "hinhAnh", "") or ""
-        return self._normalize_drive_url(raw)
+        return getattr(self.thiSinh, "display_image_url", "")
+    
+    @property
+    def total_votes(self) -> int:
+        """
+        Tổng số phiếu vote cho entry này.
+        """
+        return self.votes.count()
 
+    @property
+    def avg_stars(self):
+        """
+        Điểm sao trung bình (float) hoặc None nếu chưa có vote.
+        """
+        from django.db.models import Avg
+        agg = self.votes.aggregate(avg=Avg("stars"))
+        return agg.get("avg")
     class Meta:
         unique_together = ("pair", "side", "slot")
         indexes = [
@@ -367,3 +397,44 @@ class ThiSinhCapThiDau(models.Model):
 
     def __str__(self):
         return f"{self.pair.maCapDau} - {self.get_side_display()} - {self.thiSinh.maNV} (slot {self.slot})"
+    
+class BattleVote(models.Model):
+    giamKhao = models.ForeignKey(
+        GiamKhao,
+        on_delete=models.CASCADE,
+        related_name="battle_votes",
+        null=True,
+        blank=True,
+        db_column="giam_khao_id",   # 👈 ĐẶT ĐÚNG TÊN CỘT ĐANG CÓ TRONG DB
+    )
+    entry = models.ForeignKey(
+        ThiSinhCapThiDau,
+        on_delete=models.CASCADE,
+        related_name="votes"
+    )
+    stars = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Số sao vote (1–5)"
+    )
+    note = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Nhận xét của BGD (tuỳ chọn)"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("giamKhao", "entry")
+        indexes = [
+            models.Index(fields=["giamKhao", "entry"]),
+            models.Index(fields=["entry"]),
+        ]
+
+    def __str__(self):
+        gk = self.giamKhao.maNV if self.giamKhao else "N/A"
+        ts = getattr(self.entry.thiSinh, "maNV", self.entry.thiSinh_id)
+        pair_code = getattr(self.entry.pair, "maCapDau", self.entry.pair_id)
+        return f"Vote {self.stars}★ - {gk} -> {ts} ({pair_code})"
+
