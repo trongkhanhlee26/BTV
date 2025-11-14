@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     ThiSinh, GiamKhao, CuocThi, VongThi, BaiThi, PhieuChamDiem,
-    BaiThiTemplateSection, BaiThiTemplateItem,
+    BaiThiTemplateSection, BaiThiTemplateItem, CapThiDau, ThiSinhCapThiDau
 )
 
 @admin.register(ThiSinh)
@@ -80,3 +80,20 @@ from .models import BanGiamDoc  # ADD
 class BanGiamDocAdmin(admin.ModelAdmin):
     list_display = ("maBGD", "ten", "token", "created_at")
     search_fields = ("maBGD", "ten", "token")
+class ThiSinhCapThiDauInline(admin.TabularInline):
+    model = ThiSinhCapThiDau
+    extra = 0
+    fields = ("side", "slot", "thiSinh", "image_url")
+@admin.register(CapThiDau)
+class CapThiDauAdmin(admin.ModelAdmin):
+    list_display = ("maCapDau", "cuocThi", "vongThi", "thuTuThiDau", "active", "created_at")
+    list_filter = ("cuocThi", "vongThi", "active")
+    search_fields = ("maCapDau", "cuocThi__ma", "cuocThi__tenCuocThi")
+    ordering = ("cuocThi", "thuTuThiDau")
+    inlines = [ThiSinhCapThiDauInline]
+
+@admin.register(ThiSinhCapThiDau)
+class ThiSinhCapThiDauAdmin(admin.ModelAdmin):
+    list_display = ("pair", "side", "slot", "thiSinh", "image_url")
+    list_filter = ("pair__cuocThi", "side")
+    search_fields = ("thiSinh__maNV", "thiSinh__hoTen", "pair__maCapDau")

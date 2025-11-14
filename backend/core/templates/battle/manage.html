@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Quản lý đối kháng{% endblock %}
+<!doctype html>
+<html lang="vi">
+
+{% block head_extra %}
+  <style>
+    .center-wrap{
+      min-height: calc(100vh - 120px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px; box-sizing: border-box;
+    }
+    .card {
+      position: relative; /* để đặt nút save absolute bên trong */
+      background: rgba(17,24,39,.28);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 16px;
+      padding: 16px; box-sizing: border-box;
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      backdrop-filter: blur(14px) saturate(120%);
+      box-shadow: 0 12px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+      outline: 1px solid rgba(255,255,255,.06);
+      width: min(1080px, 96vw);
+      min-height: min(640px, 80vh);
+      color: #e5e7eb;
+    }
+    .card::before{
+      content:""; position:absolute; inset:0; border-radius:inherit;
+      background: radial-gradient(120% 60% at 10% -10%, rgba(255,255,255,.20),
+                  rgba(255,255,255,.06) 40%, transparent 60%);
+      pointer-events:none; mix-blend-mode:screen;
+    }
+
+    .toolbar{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:12px; flex-wrap:wrap;
+    }
+    .badgenote{ font-size:13px; opacity:.9; }
+    .counts{ font-size:14px; opacity:.9; }
+
+    /* Alert đỏ */
+    .alert{
+      display:none;
+      background: rgba(239,68,68,.15);
+      border: 1px solid rgba(239,68,68,.4);
+      color:#f87171;
+      padding:8px 12px; border-radius:8px; font-size:14px;
+      margin-bottom:12px;
+    }
+    .alert.show{ display:block; animation: fadeIn .2s ease-out; }
+    @keyframes fadeIn { from{ opacity:0; transform: translateY(-2px);} to{opacity:1; transform:none;} }
+
+    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    .panel{
+      background: rgba(0,0,0,.15); border:1px solid rgba(255,255,255,.08);
+      border-radius:12px; padding: 12px; display:flex; flex-direction:column; gap:10px;
+    }
+    .panel h3{ margin:0; font-size:16px; }
+
+    /* Search + Suggestion */
+    .search-wrap{ position:relative; }
+    .search{
+      width:100%; border-radius:14px; border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.25); color:#e5e7eb; padding:12px 14px; outline:none;
+      font-size:15px;
+    }
+    .suggest{
+      position:absolute; left:0; right:0; top: calc(100% + 6px);
+      background: rgba(10,13,22,.92);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      box-shadow: 0 10px 28px rgba(0,0,0,.45);
+      max-height: 300px; overflow:auto; z-index: 10;
+      display:none;
+    }
+    .suggest.show{ display:block; }
+    .s-item{
+      padding:12px 14px; border-bottom:1px dashed rgba(255,255,255,.06); cursor:pointer;
+    }
+    .s-item:last-child{ border-bottom:none; }
+    .s-item:hover{ background: rgba(255,255,255,.06); }
+    .meta{ font-size:12px; opacity:.8; }
+
+    /* Header "Đã chọn" + nút xoá */
+    .selected-header{
+      margin-top:2px;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px;
+    }
+    .selected-title{ font-weight:600; padding-left: 12px; font-size:14px; opacity:.95; }
+    .btn-clear{
+      border:none; background: rgba(255,255,255,.08); color:#e5e7eb;
+      padding:8px 12px; border-radius:10px; cursor:pointer; font-size:13px;
+    }
+    .btn-clear:hover{ background: rgba(255,255,255,.12); }
+
+    /* Selected chips */
+    .selected{
+      display:flex; gap:8px; flex-wrap:wrap; padding-top:2px;
+    }
+    .chip{
+      display:inline-flex; align-items:center; gap:8px;
+      background: rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:999px; padding:8px 12px; font-size:13px;
+    }
+    .chip button{
+      appearance:none; border:none; background:transparent; color:#e5e7eb;
+      cursor:pointer; font-size:16px; line-height:1;
+    }
+
+    /* Floating Save Button (to, bo góc, góc phải - dưới card) */
+    .btn-save{
+      position:absolute; right:14px; bottom:16px;
+      border:none; cursor:pointer;
+      padding:14px 20px;
+      border-radius:14px;
+      font-size:16px; font-weight:600;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color:white;
+      box-shadow: 0 10px 24px rgba(34,197,94,.35), inset 0 1px 0 rgba(255,255,255,.2);
+    }
+    .btn-save:active{ transform: translateY(1px); }
+
+    @media (max-width:900px){
+      .grid{ grid-template-columns: 1fr; }
+      .btn-save{ right:12px; bottom:12px; }
+    }
+
+    .toast-success{
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-6px);
+      background: #16a34a;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 999px;
+      box-shadow: 0 10px 25px rgba(22,163,74,.4);
+      font-size: 14px;
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+    .toast-success.show{
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="center-wrap">
+    <div class="card">
+      <div class="toolbar">
+        <div>
+          <div style="font-weight:600; font-size:18px;">Quản lý đối kháng</div>
+          <div class="badgenote">
+            {% if ck %} Cuộc thi: <strong>{{ ck.tenCuocThi }}</strong>
+            {% else %}<em>Chưa tìm thấy cuộc thi “Chung Kết/CK”.</em>{% endif %}
+          </div>
+        </div>
+        <div class="counts" id="countInfo"></div>
+      </div>
+
+      <div id="alertBox" class="alert">⚠️ Hai bên phải có cùng số lượng thí sinh!</div>
+
+      <div class="grid">
+        <!-- BÊN TRÁI -->
+        <div class="panel">
+          <h3>Đội Trái</h3>
+          <div class="search-wrap">
+            <input class="search" id="leftSearch" placeholder="Nhập mã NV hoặc họ tên..." autocomplete="off" />
+            <div class="suggest" id="leftSuggest"></div>
+          </div>
+
+          <div class="selected-header">
+            <div class="selected-title" id="leftTitle">Đã chọn: 0</div>
+            <button class="btn-clear" id="leftClear">Xoá chọn</button>
+          </div>
+          <div class="selected" id="leftSelected"></div>
+        </div>
+
+        <!-- BÊN PHẢI -->
+        <div class="panel">
+          <h3>Đội Phải</h3>
+          <div class="search-wrap">
+            <input class="search" id="rightSearch" placeholder="Nhập mã NV hoặc họ tên..." autocomplete="off" />
+            <div class="suggest" id="rightSuggest"></div>
+          </div>
+
+          <div class="selected-header">
+            <div class="selected-title" id="rightTitle">Đã chọn: 0</div>
+            <button class="btn-clear" id="rightClear">Xoá chọn</button>
+          </div>
+          <div class="selected" id="rightSelected"></div>
+        </div>
+      </div>
+      <div id="toastSuccess" class="toast-success">
+        Tạo cặp đấu thành công.
+      </div>
+      <!-- Nút lưu cấu hình (float dưới góc phải card) -->
+      <button class="btn-save" id="btnSave">Lưu cấu hình</button>
+    </div>
+  </div>
+
+  <script>
+    const DATA = JSON.parse('{{ contestants_json|escapejs }}'); // [{maNV, hoTen, ...}]
+    const USED = new Set(JSON.parse('{{ used_ids_json|default:"[]"|escapejs }}'));
+    const left = new Set();
+    const right = new Set();
+
+    const $ = id => document.getElementById(id);
+    const el = {
+      leftSearch: $("leftSearch"),  rightSearch: $("rightSearch"),
+      leftSuggest: $("leftSuggest"), rightSuggest: $("rightSuggest"),
+      leftSelected: $("leftSelected"), rightSelected: $("rightSelected"),
+      leftTitle: $("leftTitle"), rightTitle: $("rightTitle"),
+      leftClear: $("leftClear"), rightClear: $("rightClear"),
+      btnSave: $("btnSave"), countInfo: $("countInfo"), alertBox: $("alertBox"),
+    };
+
+    function textOf(row){ return `${row.maNV} — ${row.hoTen}`; }
+
+    // lọc theo từ khoá + loại bỏ người đã chọn ở bên kia
+    function filter(kw, side){
+      kw = (kw || "").trim().toLowerCase();
+      if (!kw) return [];
+      const exclude = new Set([ ...USED, ...left.values(), ...right.values() ]);
+      return DATA.filter(x => {
+        if (exclude.has(x.maNV)) return false;             // ẩn nếu đã chọn bên kia
+        return (x.hoTen||"").toLowerCase().includes(kw) ||
+               (x.maNV||"").toLowerCase().includes(kw);
+      }).slice(0, 50);
+    }
+
+    function renderSuggest(side){
+      const input = side==='left' ? el.leftSearch : el.rightSearch;
+      const box   = side==='left' ? el.leftSuggest : el.rightSuggest;
+      const data  = filter(input.value, side);
+
+      if (data.length === 0){ box.classList.remove('show'); box.innerHTML = ""; return; }
+
+      box.innerHTML = data.map(row => `
+        <div class="s-item" data-id="${row.maNV}">
+          <div><strong>${textOf(row)}</strong></div>
+          <div class="meta">${row.chiNhanh||""}${row.nhom ? " • Nhóm: "+row.nhom : ""}</div>
+        </div>
+      `).join("");
+      box.classList.add('show');
+
+      Array.from(box.querySelectorAll('.s-item')).forEach(it=>{
+        it.addEventListener('click', () => {
+          const id = it.getAttribute('data-id');
+          if (side==='left'){ left.add(id); } else { right.add(id); }
+          input.value = ""; box.classList.remove('show');
+          updateState();
+        });
+      });
+    }
+
+    function showToastSuccess(){
+      const t = $("toastSuccess");
+      t.classList.add("show");
+      setTimeout(() => {
+        t.classList.remove("show");
+      }, 2000);
+    }
+
+    function renderSelected(side){
+      const wrap  = side==='left' ? el.leftSelected : el.rightSelected;
+      const ids   = Array.from(side==='left' ? left : right);
+      wrap.innerHTML = ids.map(id=>{
+        const row = DATA.find(x=>x.maNV === id);
+        const label = row ? textOf(row) : id;
+        return `
+          <span class="chip" data-id="${id}">
+            ${label}
+            <button title="Bỏ chọn" aria-label="remove">×</button>
+          </span>
+        `;
+      }).join("");
+
+      // bind remove
+      Array.from(wrap.querySelectorAll('.chip button')).forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+          const id = e.currentTarget.parentElement.getAttribute('data-id');
+          if (side==='left'){ left.delete(id); } else { right.delete(id); }
+          updateState();
+        });
+      });
+
+      // cập nhật title "Đã chọn: N"
+      if (side==='left'){ el.leftTitle.textContent = `Đã chọn: ${ids.length}`; }
+      else { el.rightTitle.textContent = `Đã chọn: ${ids.length}`; }
+    }
+
+    function showAlert(msg){
+      el.alertBox.textContent = msg || "⚠️ Hai bên phải có cùng số lượng thí sinh!";
+      el.alertBox.classList.add("show");
+    }
+    function hideAlert(){ el.alertBox.classList.remove("show"); }
+
+    function updateState(){
+      el.countInfo.textContent = `Trái: ${left.size} — Phải: ${right.size}`;
+      renderSelected('left'); renderSelected('right');
+      // refresh suggestion để loại người đã chọn bên kia
+      renderSuggest('left'); renderSuggest('right');
+      hideAlert();
+    }
+
+    // ===== Events =====
+    el.leftSearch.addEventListener('input', ()=> renderSuggest('left'));
+    el.rightSearch.addEventListener('input', ()=> renderSuggest('right'));
+
+    // ẩn suggestion khi blur
+    [el.leftSearch, el.rightSearch].forEach((inp, idx)=>{
+      const box = idx===0 ? el.leftSuggest : el.rightSuggest;
+      inp.addEventListener('blur', ()=> setTimeout(()=> box.classList.remove('show'), 150));
+      inp.addEventListener('focus', ()=> { if (inp.value.trim()) renderSuggest(idx===0?'left':'right'); });
+    });
+
+    // Xoá chọn từng bên
+    el.leftClear.addEventListener('click', ()=> { left.clear(); updateState(); });
+    el.rightClear.addEventListener('click', ()=> { right.clear(); updateState(); });
+
+    el.btnSave.addEventListener('click', async ()=>{
+      const ok = left.size === right.size && left.size > 0;
+      if (!ok){
+        showAlert("⚠️ Hai bên phải có cùng số lượng thí sinh!");
+        return;
+      }
+
+      const payload = { left: Array.from(left), right: Array.from(right) };
+
+      try {
+        const res = await fetch("/battle/pairing/save", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/)||[])[1] || ""
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok){
+          const txt = await res.text();
+          showAlert("Lỗi lưu cấu hình: " + txt);
+          return;
+        }
+
+        hideAlert();
+        // cập nhật USED trên FE luôn
+        payload.left.forEach(id => USED.add(id));
+        payload.right.forEach(id => USED.add(id));
+
+        // clear lựa chọn hiện tại
+        left.clear();
+        right.clear();
+        updateState();
+
+        // hiển thị toast + reload sau 2s
+        showToastSuccess();
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+
+      } catch (e) {
+        showAlert("Không thể lưu cấu hình: " + e.message);
+      }
+    });
+    // init
+    updateState();
+  </script>
+{% endblock %}

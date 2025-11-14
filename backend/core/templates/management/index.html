@@ -68,6 +68,14 @@
             </a>
         </div>
         <div class="mt-2 p-3 bg-white/5 rounded-xl">
+            <div class="text-sm opacity-80 mb-2">Quản lý đối kháng</div>
+            <a href="/battle/manage"
+                class="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg">
+                <img src="{% static 'icons/download.svg' %}" class="h-4 w-4" alt="">
+                <span>Quản lý</span>
+            </a>
+        </div>
+        <div class="mt-2 p-3 bg-white/5 rounded-xl">
             <div class="text-sm opacity-80 mb-2">Thêm danh sách</div>
             <a href="/import{% if contest %}?ct={{ contest.id }}{% endif %}"
                 class="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg">
