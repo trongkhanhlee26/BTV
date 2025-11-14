@@ -63,6 +63,20 @@
                 padding: 10px 12px;
                 font-size: 13px;
             }
+                        /* Viền dọc cho TẤT CẢ ô tiêu đề cột */
+            .rank-table thead th {
+            border: 1px #767a89 solid ;
+            }
+/* Bỏ bo góc cho các ô tiêu đề tên Bài thi và tiêu đề Vòng */
+.rank-table thead th.col-test,
+.rank-table thead th.vt-group {
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+
 
             .rank-table th,
             .rank-table td {
@@ -192,6 +206,30 @@ td.num { font-weight: 600; }
             border: 1px solid var(--panel-brd);
             box-shadow: 0 6px 18px rgba(2, 6, 23, .25);
         }
+/* Tô màu phần nắp trên (ăn theo bo góc của .table-wrap) */
+.table-wrap {
+  position: relative;          /* tạo mốc cho ::before */
+  overflow: hidden;            /* để nắp bo theo khung */
+  border-radius: 12px;         /* đã có sẵn của bạn */
+}
+
+/* Dải nắp tô nền trùng màu header */
+.table-wrap::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 56px;                /* ~ chiều cao header; chỉnh 52–60 tùy thực tế */
+  background: linear-gradient(180deg, rgba(15, 23, 42, .95) 0%, rgba(15, 23, 42, .86) 100%);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  z-index: 0;                  /* nằm dưới các ô <th> */
+}
+
+/* đảm bảo header nằm trên lớp nắp */
+.rank-table thead th {
+  position: sticky;
+  z-index: 1;
+}
 
         /* ===== Rank table */
         .rank-table {

@@ -58,7 +58,7 @@ class BaiThiAdmin(admin.ModelAdmin):
 @admin.register(PhieuChamDiem)
 class PhieuChamDiemAdmin(admin.ModelAdmin):
     list_display = ("maPhieu", "thiSinh", "giamKhao", "baiThi", "diem", "maCuocThi", "thoiGian", "updated_at")
-    search_fields = ("thiSinh__maNV", "giamKhao__maNV", "baiThi__maBaiThi", "maCuocThi")
+    search_fields = ("thiSinh__maNV", "giamKhao__maNV", "baiThi__ma", "maCuocThi")
     list_filter = ("maCuocThi", "baiThi")
     
 @admin.register(BaiThiTemplateSection)
@@ -73,6 +73,13 @@ class BaiThiTemplateItemAdmin(admin.ModelAdmin):
     list_filter = ("section__baiThi",)
     search_fields = ("content", "section__title", "section__baiThi__ma")
 
+    # core/admin.py
+from .models import BanGiamDoc  # ADD
+
+@admin.register(BanGiamDoc)
+class BanGiamDocAdmin(admin.ModelAdmin):
+    list_display = ("maBGD", "ten", "token", "created_at")
+    search_fields = ("maBGD", "ten", "token")
 class ThiSinhCapThiDauInline(admin.TabularInline):
     model = ThiSinhCapThiDau
     extra = 0
