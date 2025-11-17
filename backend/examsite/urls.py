@@ -27,7 +27,7 @@ from django.urls import path, include
 from core import views_score
 from core.views_admin import import_view
 from core.views_bgd import bgd_qr_index, bgd_qr_png, bgd_go, bgd_battle_go, score_bgd_view, bgd_qr_zip_all, bgd_list  # ADD
-from core.views_battle import battle_view, manage_battle_view, save_pairing, pairing_state
+from core.views_battle import battle_view, manage_battle_view, save_pairing, pairing_state, submit_vote
 
 urlpatterns = [
     path("", home_view, name="home"),
@@ -59,4 +59,5 @@ urlpatterns = [
 
     path("battle/pairing/save", save_pairing, name="battle-pairing-save"),
     path("battle/pairing/state", pairing_state, name="battle-pairing-state"),
+    path("battle/vote", submit_vote, name="battle_submit_vote"),
 ]

@@ -15,7 +15,7 @@ from .models import ThiSinh, GiamKhao, CuocThi, ThiSinhCuocThi
 from core.decorators import judge_required
 
 REQUIRED_COLUMNS = {
-    "thisinh": ["maNV", "hoTen", "chiNhanh", "vung", "donVi", "email", "nhom"],
+    "thisinh": ["maNV", "hoTen", "chiNhanh", "vung", "donVi", "email", "nhom", "image_url"],
     "giamkhao": ["maNV", "hoTen", "email"],
 }
 
@@ -42,6 +42,10 @@ HEADER_ALIASES = {
     "email": "email", "mail": "email", "e-mail": "email",
     # nhom
     "nhom": "nhom", "group": "nhom", "nhomthi": "nhom",
+    #imageUrl
+    "imageurl": "image_url", "image_url": "image_url", "hinhanh": "image_url",
+    "hinh_anh": "image_url", "hinhAnh": "image_url", "anh": "image_url", "img": "image_url"
+
 }
 
 def _map_header_list(header, expected_cols):
@@ -178,6 +182,7 @@ def import_view(request):
                     donVi = (r.get("donVi", "") or "").strip() or None
                     email = (r.get("email", "") or "").strip() or None
                     nhom = (r.get("nhom", "") or "").strip() or None
+                    image_url = (r.get("image_url", "") or "").strip() or None
 
                     obj, is_created = ThiSinh.objects.update_or_create(
                         pk=ma,
@@ -188,6 +193,7 @@ def import_view(request):
                             donVi=donVi,
                             email=email,
                             nhom=nhom,
+                            image_url=image_url,
                         ),
                     )
 
