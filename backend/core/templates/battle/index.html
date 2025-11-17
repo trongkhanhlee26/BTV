@@ -1,0 +1,881 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Đối kháng{% endblock %}
+<!doctype html>
+<html lang="vi">
+
+{% block head_extra %}
+  <style>
+    .battle-wrap{
+      min-height: calc(100vh - 120px);
+      display:flex; align-items:center; justify-content:center;
+      padding:24px; box-sizing:border-box;
+    }
+    .battle-card{
+      position:relative;
+      width:min(1120px, 96vw);
+      min-height: 480px;
+      border-radius: 18px;
+      background: rgba(17,24,39,.28);
+      border:1px solid rgba(255,255,255,.18);
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      backdrop-filter: blur(14px) saturate(120%);
+      box-shadow: 0 18px 45px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+      outline: 1px solid rgba(255,255,255,.06);
+      color:#e5e7eb;
+      overflow:hidden;
+      padding:20px 20px 26px;
+      box-sizing:border-box;
+    }
+    .battle-card::before{
+      content:""; position:absolute; inset:0; border-radius:inherit;
+      background: radial-gradient(120% 60% at 10% -10%, rgba(255,255,255,.18),
+                  rgba(255,255,255,.05) 40%, transparent 65%);
+      pointer-events:none; mix-blend-mode:screen;
+    }
+
+    .battle-header{
+      position:relative;
+      z-index:2;
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:12px; gap:12px;
+    }
+    .battle-title{
+      font-size:18px; font-weight:700;
+    }
+    .battle-sub{
+      font-size:13px; opacity:.85;
+    }
+    .battle-counter{
+      font-size:14px; opacity:.9;
+    }
+
+    /* Carousel */
+    .carousel{
+      position:relative;
+      z-index:2;
+      margin-top:8px;
+      height: 100%;
+    }
+    .carousel-viewport{
+      position:relative;
+      overflow:hidden;
+      border-radius:14px;
+    }
+    .carousel-slides{
+      display:flex;
+      width:100%;
+      transition: transform .55s cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+    .carousel-slide{
+      flex:0 0 100%;
+      box-sizing:border-box;
+      padding:18px 12px 10px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    .pair-label{
+      font-size:13px;
+      opacity:.85;
+      margin-bottom:4px;
+      text-align:center;
+    }
+
+    /* layout 2 bên */
+    .pair-grid{
+      display:grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap:18px;
+      align-items:center;
+    }
+
+    .fighter-card{
+      background: rgba(0,0,0,.22);
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.1);
+      padding:14px 12px 16px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+      box-shadow: 0 12px 28px rgba(0,0,0,.45);
+    }
+
+    .fighter-tag{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.11em;
+      opacity:.75;
+    }
+
+    .fighter-photo-wrap{
+      width:180px; height:220px;
+      border-radius:16px;
+      overflow:hidden;
+      background: radial-gradient(circle at 30% 0%, #ffffff, #d4e1ff);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .fighter-photo{
+      width:100%; height:100%;
+      object-fit:cover;
+    }
+    .fighter-photo.empty{
+      display:flex; align-items:center; justify-content:center;
+      font-size:12px; opacity:.8;
+      padding:8px; text-align:center;
+    }
+
+    .fighter-name{
+      font-size:16px;
+      font-weight:600;
+      text-align:center;
+    }
+    .fighter-id{
+      font-size:12px;
+      opacity:.8;
+      text-align:center;
+    }
+
+    .btn-vote{
+      margin-top:4px;
+      border:none;
+      cursor:pointer;
+      border-radius:999px;
+      padding:8px 20px;
+      font-size:14px;
+      font-weight:600;
+      background: linear-gradient(135deg,#f97316,#ec4899);
+      color:white;
+      box-shadow: 0 8px 22px rgba(248,113,113,.45), inset 0 1px 0 rgba(255,255,255,.28);
+    }
+    .btn-vote:active{ transform: translateY(1px); }
+
+    .vs-badge{
+      width:80px;
+      height:80px;
+      border-radius:999px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(15,23,42,.8);
+      box-shadow: 0 10px 24px rgba(0,0,0,.6);
+      border:1px solid rgba(148,163,184,.5);
+    }
+    .vs-badge img{
+      width:70%;
+      height:70%;
+      object-fit:contain;
+      display:block;
+    }
+    .vs-img{
+      width:140px;
+      height:160px;
+      object-fit:contain;
+      display:block;
+      margin:0 auto;
+    }
+
+
+    /* Buttons left/right */
+    .nav-btn{
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      width:44px; height:44px;
+      border-radius:999px;
+      border:none;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      background: rgba(15,23,42,.85);
+      color:#e5e7eb;
+      box-shadow: 0 8px 22px rgba(0,0,0,.75);
+      z-index:5;
+      transition: background .18s ease, box-shadow .18s ease, transform .18s ease;
+    }
+    .nav-btn.disabled{
+      opacity:.35;
+      pointer-events:none;
+      box-shadow:none;
+    }
+    .nav-btn-left{ left:8px; }
+    .nav-btn-right{ right:8px; }
+
+    .nav-btn span{
+      display:inline-block;
+      font-size:18px;
+      line-height:1;
+    }
+
+    /* hiệu ứng hover nhích theo hướng và sáng lên */
+    .nav-btn:not(.disabled):hover{
+      background: rgba(75,85,99,.9); /* xám sáng hơn */
+      box-shadow: 0 10px 26px rgba(0,0,0,.85);
+    }
+    .nav-btn-left:not(.disabled):hover{
+      transform: translateY(-50%) translateX(-2px);
+    }
+    .nav-btn-right:not(.disabled):hover{
+      transform: translateY(-50%) translateX(2px);
+    }
+    .nav-icon {
+      width: 22px;
+      height: 22px;
+      color: #d1d5db; /* xám nhạt */
+      transition: transform .18s ease, color .18s ease;
+    }
+
+    .nav-btn:not(.disabled):hover .nav-icon {
+      color: #ffffff;
+      transform: scale(1.12);
+    }
+
+    .no-pair{
+      padding:40px 10px;
+      text-align:center;
+      font-size:15px;
+      opacity:.8;
+    }
+
+    /* Popup vote */
+    .modal-backdrop{
+      position:fixed;
+      inset:0;
+      background: rgba(15,23,42,.75);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      opacity:0;
+      pointer-events:none;
+      transition: opacity .25s ease;
+      z-index:50;
+    }
+    .modal-backdrop.show{
+      opacity:1;
+      pointer-events:auto;
+    }
+    .modal{
+      background: #0f172a;
+      border-radius:18px;
+      border:1px solid rgba(148,163,184,.4);
+      padding:22px 24px 18px;
+      width:min(460px, 94vw);
+      box-shadow: 0 18px 45px rgba(0,0,0,.7);
+      color:#e5e7eb;
+      position:relative;
+    }
+    .modal-title{
+      font-size:18px;
+      font-weight:600;
+      margin-bottom:8px;
+      text-align:center;         
+    }
+    .modal-body{
+      font-size:14px;
+      opacity:.9;
+      margin-bottom:16px;
+      display:flex;              
+      flex-direction:column;
+      gap:14px;
+    }
+    .modal-actions{
+      display:flex;
+      justify-content:flex-end;   
+      gap:10px;
+      margin-top:4px;
+    }
+
+    .vote-info{
+      text-align:center;
+    }
+    .vote-info-name{
+      font-weight:600;
+    }
+    .vote-info-id{
+      font-size:12px;
+      opacity:.8;
+    }
+
+    .vote-stars{
+      text-align:center;
+    }
+    .vote-stars-label{
+      font-size:13px;
+      margin-bottom:6px;
+      opacity:.9;
+    }
+    .vote-stars-row{
+      display:flex;
+      justify-content:center;     
+      gap:8px;
+    }
+    .star-btn{
+      width:34px;
+      height:34px;
+      padding:0;
+      border:none;
+      background:transparent;
+      cursor:pointer;
+    }
+    .star-icon{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      filter: grayscale(100%) brightness(0.75);
+      opacity:.55;
+      transition: filter .15s ease, opacity .15s ease, transform .12s ease;
+    }
+    .star-btn.active .star-icon{
+      filter:none;
+      opacity:1;
+      transform: scale(1.05);
+    }
+
+    .vote-note{
+      margin-top:2px;
+    }
+    .vote-note label{
+      font-size:13px;
+      opacity:.9;
+      display:block;
+      margin-bottom:4px;
+    }
+    .vote-note textarea{
+      width:100%;
+      min-height:80px;
+      border-radius:12px;
+      border:1px solid rgba(148,163,184,.6);
+      background:#020617;
+      color:#e5e7eb;
+      padding:9px 11px;
+      font-size:13px;
+      resize:vertical;
+      box-sizing:border-box;
+    }
+    .vote-note textarea:focus{
+      outline:none;
+      border-color:#22c55e;
+      box-shadow:0 0 0 1px rgba(34,197,94,.4);
+    }
+    .btn-outline, .btn-primary{
+      border-radius:999px;
+      padding:7px 16px;
+      font-size:14px;
+      cursor:pointer;
+      border:none;
+    }
+    .btn-outline{
+      background:transparent;
+      border:1px solid rgba(148,163,184,.8);
+      color:#e5e7eb;
+    }
+    .btn-primary{
+      background: linear-gradient(135deg,#22c55e,#16a34a);
+      color:white;
+      box-shadow: 0 8px 22px rgba(34,197,94,.45), inset 0 1px 0 rgba(255,255,255,.2);
+    }
+    .modal-close-x{
+      position:absolute;
+      top:6px; right:8px;
+      border:none;
+      background:transparent;
+      color:#9ca3af;
+      cursor:pointer;
+      font-size:18px;
+    }
+
+    @media (max-width: 900px){
+      .pair-grid{
+        grid-template-columns:1fr;
+        row-gap:14px;
+      }
+      .vs-badge{
+        justify-self:center;
+      }
+    }
+
+        /* Layout cho tablet / mobile ngang */
+    @media (max-width: 768px){
+      .battle-wrap{
+        padding:14px 10px 20px;
+        align-items:flex-start;
+      }
+      .battle-card{
+        width:100%;
+        min-height:auto;
+        padding:14px 12px 18px;
+        border-radius:16px;
+      }
+      .battle-header{
+        flex-direction:column;
+        align-items:flex-start;
+        gap:4px;
+        margin-bottom:8px;
+      }
+      .battle-title{
+        font-size:16px;
+      }
+      .battle-sub{
+        font-size:12px;
+      }
+      .battle-counter{
+        font-size:12px;
+        align-self:flex-end;
+      }
+
+      .pair-grid{
+        row-gap:14px;
+      }
+      .fighter-card{
+        padding:10px 10px 12px;
+        border-radius:14px;
+      }
+      .fighter-photo-wrap{
+        width:70vw;
+        max-width:260px;
+        height:78vw;
+        max-height:280px;
+      }
+      .fighter-name{
+        font-size:15px;
+      }
+      .btn-vote{
+        width:100%;
+        max-width:180px;
+      }
+
+      .vs-img{
+        width:100px;
+        height:120px;
+      }
+
+      .nav-btn{
+        width:38px;
+        height:38px;
+      }
+      .nav-btn-left{ left:4px; }
+      .nav-btn-right{ right:4px; }
+    }
+
+    @media (max-width: 480px){
+      .battle-wrap{
+        padding:10px 6px 18px;
+      }
+      .battle-card{
+        padding:12px 10px 16px;
+        border-radius:14px;
+      }
+      .battle-title{
+        font-size:15px;
+      }
+      .battle-sub{
+        font-size:11px;
+      }
+      .pair-label{
+        font-size:12px;
+      }
+
+      .fighter-photo-wrap{
+        width:78vw;
+        max-width:none;
+        height:90vw;
+        max-height:none;
+      }
+
+      .vs-img{
+        width:80px;
+        height:96px;
+      }
+
+      .nav-btn{
+        width:34px;
+        height:34px;
+      }
+
+      .modal{
+        width:96vw;
+        max-width:380px;
+        padding:18px 16px 14px;
+      }
+      .modal-title{
+        font-size:16px;
+      }
+      .modal-body{
+        gap:10px;
+      }
+      .star-btn{
+        width:30px;
+        height:30px;
+      }
+      .vote-note textarea{
+        min-height:70px;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="battle-wrap">
+  <div class="battle-card">
+    <div class="battle-header">
+      <div>
+        <div class="battle-title">Đối kháng</div>
+        <div class="battle-sub" id="subtitle">Đang tải danh sách cặp đấu...</div>
+      </div>
+      <div class="battle-counter" id="counter"></div>
+    </div>
+
+    <div class="carousel">
+      <button class="nav-btn nav-btn-left disabled" id="btnPrev">
+        <svg viewBox="0 0 24 24" class="nav-icon">
+          <path d="M16 4l-8 8 8 8" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="nav-btn nav-btn-right disabled" id="btnNext">
+        <svg viewBox="0 0 24 24" class="nav-icon">
+          <path d="M8 4l8 8-8 8" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      <div class="carousel-viewport">
+        <div class="carousel-slides" id="slides">
+          <!-- slides sẽ được render bằng JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Popup vote -->
+<div class="modal-backdrop" id="voteModal">
+  <div class="modal">
+    <button class="modal-close-x" id="voteModalCloseX">&times;</button>
+    <div class="modal-title">Vote thí sinh</div>
+    <div class="modal-body" id="voteModalBody">
+      <div class="vote-info">
+        <div>Thí sinh:</div>
+        <div class="vote-info-name" id="voteInfoName">---</div>
+        <div class="vote-info-id" id="voteInfoId" style="font-size:12px;opacity:.8;">---</div>
+      </div>
+
+      <div class="vote-stars">
+        <div class="vote-stars-label">Đánh giá (tối đa 5 sao):</div>
+        <div class="vote-stars-row" id="voteStarsRow">
+          <!-- JS sẽ render 5 sao ở đây -->
+        </div>
+      </div>
+
+      <div class="vote-note">
+        <label for="voteNote">Ghi chú (không bắt buộc)</label>
+        <textarea id="voteNote" placeholder="Nhập nhận xét của bạn nếu có..."></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-outline" id="voteModalCancel">Huỷ</button>
+      <button class="btn-primary" id="voteModalOk">Đồng ý</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const $ = (id)=> document.getElementById(id);
+    const slidesEl = $("slides");
+    const counterEl = $("counter");
+    const subtitleEl = $("subtitle");
+    const btnPrev = $("btnPrev");
+    const btnNext = $("btnNext");
+
+    const voteModal = $("voteModal");
+    const voteModalBody = $("voteModalBody");
+    const voteModalCloseX = $("voteModalCloseX");
+    const voteModalCancel = $("voteModalCancel");
+    const voteModalOk = $("voteModalOk");
+
+    const voteInfoName = $("voteInfoName");
+    const voteInfoId   = $("voteInfoId");
+    const voteStarsRow = $("voteStarsRow");
+    const voteNote     = $("voteNote");
+
+    let state = {
+      pairs: [],
+      current: 0,
+      currentFighter: null,
+      voteRating: 0,
+      voteNote: "",
+    };
+
+    const VS_IMG_URL = "{% static 'pics/vs.png' %}";
+    const STAR_IMG_URL = "{% static 'pics/star.png' %}";
+
+    function normalizeImageUrl(url){
+      if (!url) return "";
+
+      if (!url.includes("drive.google.com")) {
+        return url;  // link thường, giữ nguyên
+      }
+
+      let fileId = null;
+
+      // Dạng /file/d/<ID>/
+      let m = url.match(/\/file\/d\/([^/]+)/);
+      if (m && m[1]){
+        fileId = m[1];
+      } else {
+        // Dạng ?id=<ID> (vd: open?id=..., uc?export=view&id=...)
+        const queryMatch = url.match(/[?&]id=([^&]+)/);
+        if (queryMatch && queryMatch[1]){
+          fileId = queryMatch[1];
+        }
+      }
+
+      if (!fileId){
+        // Nếu không bắt được ID (vd: link folder) thì trả nguyên link
+        return url;
+      }
+
+      return `https://drive.google.com/uc?export=view&id=${fileId}`;
+    }
+
+    // --- Vote sao trong popup ---
+    function renderStars(){
+      // tạo 5 nút sao nếu chưa có
+      voteStarsRow.innerHTML = "";
+      for (let i = 1; i <= 5; i++){
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "star-btn";
+        btn.dataset.value = String(i);
+
+        const img = document.createElement("img");
+        img.src = STAR_IMG_URL;
+        img.alt = i + " sao";
+        img.className = "star-icon";
+
+        btn.appendChild(img);
+        voteStarsRow.appendChild(btn);
+      }
+
+      // gắn sự kiện click
+      voteStarsRow.querySelectorAll(".star-btn").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const value = parseInt(btn.dataset.value || "0", 10) || 0;
+          state.voteRating = value;
+          updateStarActive();
+        });
+      });
+
+      updateStarActive();
+    }
+
+    function updateStarActive(){
+      const current = state.voteRating || 0;
+      voteStarsRow.querySelectorAll(".star-btn").forEach(btn=>{
+        const value = parseInt(btn.dataset.value || "0", 10) || 0;
+        if (value <= current){
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      });
+    }
+
+    function buildSlideHtml(pair){
+      const left  = (pair.left  && pair.left[0])  || null;
+      const right = (pair.right && pair.right[0]) || null;
+
+      const leftSrc  = left  && left.image_url  ? normalizeImageUrl(left.image_url)  : "";
+      const rightSrc = right && right.image_url ? normalizeImageUrl(right.image_url) : "";
+
+      const leftImg = leftSrc
+        ? `<img src="${leftSrc}" class="fighter-photo" alt="${left.hoTen}">`
+        : `<div class="fighter-photo empty">Chưa có ảnh</div>`;
+
+      const rightImg = rightSrc
+        ? `<img src="${rightSrc}" class="fighter-photo" alt="${right.hoTen}">`
+        : `<div class="fighter-photo empty">Chưa có ảnh</div>`;
+
+      const leftName = left ? left.hoTen : "Chưa chọn";
+      const rightName = right ? right.hoTen : "Chưa chọn";
+      const leftId = left ? left.maNV : "";
+      const rightId = right ? right.maNV : "";
+
+      return `
+        <div class="carousel-slide">
+          <div class="pair-label">
+            ${pair.tenCapDau || ("Cặp đấu #" + pair.order)}
+          </div>
+          <div class="pair-grid">
+            <div class="fighter-card">
+              <div class="fighter-tag">Đội trái</div>
+              <div class="fighter-photo-wrap">${leftImg}</div>
+              <div class="fighter-name">${leftName}</div>
+              <div class="fighter-id">${leftId}</div>
+              ${left ? `<button class="btn-vote"
+                  data-side="L"
+                  data-manv="${leftId}"
+                  data-name="${leftName}"
+                  data-pair-id="${pair.id}"
+                  data-pair-code="${pair.maCapDau}">Vote</button>` : ""}
+            </div>
+
+            <img src="${VS_IMG_URL}" alt="VS" class="vs-img">
+
+            <div class="fighter-card">
+              <div class="fighter-tag">Đội phải</div>
+              <div class="fighter-photo-wrap">${rightImg}</div>
+              <div class="fighter-name">${rightName}</div>
+              <div class="fighter-id">${rightId}</div>
+              ${right ? `<button class="btn-vote"
+                   data-side="R"
+                   data-manv="${rightId}"
+                   data-name="${rightName}"
+                   data-pair-id="${pair.id}"
+                   data-pair-code="${pair.maCapDau}">Vote</button>` : ""}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPairs(){
+      const pairs = state.pairs;
+      if (!pairs || pairs.length === 0){
+        slidesEl.innerHTML = `<div class="carousel-slide"><div class="no-pair">Chưa có cặp đấu nào được cấu hình.</div></div>`;
+        counterEl.textContent = "";
+        subtitleEl.textContent = "Vui lòng vào trang Quản lý đối kháng để tạo các cặp đấu.";
+        btnPrev.classList.add("disabled");
+        btnNext.classList.add("disabled");
+        return;
+      }
+
+      slidesEl.innerHTML = pairs.map(buildSlideHtml).join("");
+      subtitleEl.textContent = "Dùng nút trái / phải để chuyển giữa các cặp đấu.";
+      updateSlidePosition();
+
+      slidesEl.querySelectorAll(".btn-vote").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const name      = btn.getAttribute("data-name") || "";
+          const manv      = btn.getAttribute("data-manv") || "";
+          const side      = btn.getAttribute("data-side") || "";
+          const pairId    = btn.getAttribute("data-pair-id") || "";
+          const pairCode  = btn.getAttribute("data-pair-code") || "";
+
+          state.currentFighter = { name, manv, side, pairId, pairCode };
+
+          // set thông tin thí sinh
+          voteInfoName.textContent = name || "---";
+          voteInfoId.textContent = manv ? `Mã NV: ${manv} — Cặp: ${pairCode || ""}` : "";
+
+          // reset rating & note mỗi lần mở popup
+          state.voteRating = 0;
+          state.voteNote = "";
+          voteNote.value = "";
+          updateStarActive();
+
+          voteModal.classList.add("show");
+        });
+      });
+    }
+
+    function updateSlidePosition(){
+      const pairs = state.pairs;
+      if (!pairs || pairs.length === 0){
+        slidesEl.style.transform = "translateX(0)";
+        return;
+      }
+      if (state.current < 0) state.current = 0;
+      if (state.current > pairs.length - 1) state.current = pairs.length - 1;
+
+      const offset = -state.current * 100;
+      slidesEl.style.transform = `translateX(${offset}%)`;
+      counterEl.textContent = `${state.current + 1} / ${pairs.length}`;
+
+      if (state.current === 0) btnPrev.classList.add("disabled");
+      else btnPrev.classList.remove("disabled");
+
+      if (state.current === pairs.length - 1) btnNext.classList.add("disabled");
+      else btnNext.classList.remove("disabled");
+    }
+
+    btnPrev.addEventListener("click", ()=>{
+      state.current -= 1;
+      updateSlidePosition();
+    });
+    btnNext.addEventListener("click", ()=>{
+      state.current += 1;
+      updateSlidePosition();
+    });
+
+    // popup events
+    function closeModal(){
+      voteModal.classList.remove("show");
+      state.currentFighter = null;
+    }
+    voteModalCloseX.addEventListener("click", closeModal);
+    voteModalCancel.addEventListener("click", closeModal);
+    voteModalOk.addEventListener("click", ()=>{
+      if (!state.currentFighter){
+        alert("Không xác định được thí sinh.");
+        return;
+      }
+      if (!state.voteRating || state.voteRating < 1){
+        alert("Vui lòng chọn ít nhất 1 sao trước khi gửi.");
+        return;
+      }
+
+      state.voteNote = voteNote.value || "";
+
+      const payload = {
+        pair_id: state.currentFighter.pairId,
+        maNV: state.currentFighter.manv,
+        side: state.currentFighter.side,
+        stars: state.voteRating,
+        note: state.voteNote,
+      };
+
+      fetch("/battle/vote", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+      .then(res => res.json().then(data => ({ status: res.status, data })))
+      .then(({ status, data }) => {
+        if (!data.ok){
+          const msg = data.error || `Lỗi (${status}) khi lưu vote.`;
+          alert(msg);
+          return;
+        }
+        alert("Đã lưu vote thành công!");
+        closeModal();
+      })
+      .catch(err => {
+        console.error("Error submit vote:", err);
+        alert("Có lỗi khi gửi vote. Vui lòng thử lại.");
+      });
+    });
+
+    voteModal.addEventListener("click", (e)=>{
+      if (e.target === voteModal) closeModal();
+    });
+
+    fetch("/battle/pairing/state")
+      .then(res => res.json())
+      .then(data => {
+        state.pairs = data.pairs || [];
+        state.current = 0;
+        renderPairs();
+        renderStars();
+      })
+
+      .catch(err => {
+        console.error(err);
+        subtitleEl.textContent = "Không tải được danh sách cặp đấu.";
+      });
+
+  })();
+</script>
+{% endblock %}

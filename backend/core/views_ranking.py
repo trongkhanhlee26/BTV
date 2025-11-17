@@ -16,7 +16,6 @@ def ranking_view(request):
     ct_id = request.GET.get("ct")
     cuoc_this = CuocThi.objects.filter(trangThai=True).order_by("-id")
 
-    # Nếu không có cuộc thi active -> trả trang rỗng
     if not cuoc_this.exists():
         return render(request, "ranking/index.html", {
             "cuoc_this": cuoc_this, "selected_ct": None,
@@ -24,12 +23,11 @@ def ranking_view(request):
             "title": "Xếp hạng theo Cuộc thi",
         })
 
-    # Có cuộc thi active: ưu tiên ct theo tham số; nếu không thấy thì fallback ct đầu tiên
     selected_ct = cuoc_this.filter(id=ct_id).first() if ct_id else None
     if selected_ct is None:
         selected_ct = cuoc_this.first()
 
-    # 2) Lấy các vòng + bài của cuộc thi
+    # 2) Lấy vòng + bài
     vongs = list(VongThi.objects.filter(cuocThi=selected_ct).order_by("id"))
     bai_list = (
         BaiThi.objects.filter(vongThi__in=vongs)
@@ -57,7 +55,7 @@ def ranking_view(request):
                 "code": b.ma,
                 "title": b.tenBaiThi,
                 "max": b_max,
-                "col_index": running_test_index,  # vị trí cột (tính từ 0 trong phần bài thi)
+                "col_index": running_test_index,
             })
             running_test_index += 1
             g_max += (b_max or 0)
@@ -72,7 +70,24 @@ def ranking_view(request):
             })
             total_max += g_max
 
-    # 3) Map điểm (thiSinh.maNV, baiThi_id) -> avg
+    # === (MỚI) Tính tổng thời gian SAU khi đã có toàn bộ groups/bai_list ===
+    time_test_ids = [b.id for b in bai_list if _score_type(b) == "TIME"]
+
+    time_sum_map = {}
+    if time_test_ids:
+        time_qs = (
+            PhieuChamDiem.objects
+            .filter(cuocThi=selected_ct, baiThi_id__in=time_test_ids)
+            .values("thiSinh__maNV", "baiThi_id")
+            .annotate(t_avg=Avg("thoiGian"))   # đổi tên field nếu DB bạn khác
+        )
+        for r in time_qs:
+            if r["t_avg"] is None:
+                continue
+            key = r["thiSinh__maNV"]
+            time_sum_map[key] = time_sum_map.get(key, 0.0) + float(r["t_avg"])
+
+    # 3) Map điểm
     all_test_ids = [t["id"] for g in groups for t in g["tests"]]
     score_qs = (
         PhieuChamDiem.objects
@@ -82,7 +97,7 @@ def ranking_view(request):
     )
     score_map = {(r["thiSinh__maNV"], r["baiThi_id"]): float(r["avg"]) for r in score_qs}
 
-    # 4) Lấy thí sinh thuộc cuộc thi (m2m + có phiếu chấm)
+    # 4) Thí sinh
     ts_m2m = ThiSinh.objects.filter(cuocThi=selected_ct)
     ts_scored = ThiSinh.objects.filter(phieuchamdiem__cuocThi=selected_ct)
     ts_qs = (
@@ -95,7 +110,6 @@ def ranking_view(request):
     for ts in ts_qs:
         groups_view = []
         total_sum = 0.0
-
         for g in groups:
             g_scores = []
             g_sum = 0.0
@@ -110,12 +124,19 @@ def ranking_view(request):
             "maNV": ts.maNV,
             "hoTen": ts.hoTen,
             "donVi": ts.donVi or "",
-            "groups_view": groups_view,   # <--- mới: dữ liệu theo Vòng
+            "groups_view": groups_view,
             "total": total_sum,
+            "total_time": time_sum_map.get(ts.maNV),  # None nếu không có TIME
         })
 
+    # Sort: điểm ↓, tổng thời gian ↑ (nếu có), mã NV ↑
+    def _row_sort_key(r):
+        total = r["total"]
+        t = r.get("total_time")
+        t_key = t if t is not None else float("inf")
+        return (-total, t_key, r["maNV"])
 
-    rows.sort(key=lambda r: (-r["total"], r["maNV"]))
+    rows.sort(key=_row_sort_key)
 
     return render(request, "ranking/index.html", {
         "cuoc_this": cuoc_this,
@@ -125,3 +146,4 @@ def ranking_view(request):
         "total_max": total_max,
         "title": f"Xếp hạng — {selected_ct.ma} · {selected_ct.tenCuocThi}",
     })
+

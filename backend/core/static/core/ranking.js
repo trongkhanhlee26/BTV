@@ -9,7 +9,12 @@
   const pageSize     = parseInt(table.dataset.pageSize || '10', 10);
   const intervalMs   = parseInt(table.dataset.intervalMs || '3000', 10);
   const colGroupSize = parseInt(table.dataset.colGroupSize || '5', 10);
-
+  // === Auto-reload khi chạy hết danh sách và quay lại từ đầu ===
+  const RELOAD_ON_LOOP = true;     // bật/tắt
+  const RELOAD_DELAY_MS = 600;     // chờ 0.6s cho mượt
+  let _didLoopReload = false;      // chặn reload nhiều lần trong cùng vòng
+  const NO_MOVE_RELOAD_TICKS = 1;  // sau bao nhiêu lần advance mà không đổi trạng thái thì reload
+  let _noMoveTicks = 0;
   const thead = table.tHead;
   const vtRow = thead.rows[0];                   // hàng Vòng thi
   const btRow = thead.rows[thead.rows.length-1]; // hàng Bài thi
@@ -227,19 +232,49 @@ groupsMeta.forEach(meta => {
     }
   }
 
-  function advance(){
-    // Nếu không có quét ngang (<= colGroupSize) ⇒ chỉ chuyển trang theo hàng
-    if(totalColGroups <= 1){
+function advance(){
+  const prevRow = rowPage;
+  const prevCol = colGroup;
+
+  // Nếu không có quét ngang (<= colGroupSize) ⇒ chỉ chuyển trang theo hàng
+  if(totalColGroups <= 1){
+    rowPage = (rowPage + 1) % totalRowPages;
+  } else {
+    colGroup++;
+    if(colGroup >= totalColGroups){
+      colGroup = 0;
       rowPage = (rowPage + 1) % totalRowPages;
-    } else {
-      colGroup++;
-      if(colGroup >= totalColGroups){
-        colGroup = 0;
-        rowPage = (rowPage + 1) % totalRowPages;
-      }
     }
-    showRowPage();
   }
+
+  showRowPage();
+
+  // 1) Trường hợp "wrap về đầu" (đã khác trước đó) -> reload
+  if (
+    RELOAD_ON_LOOP &&
+    !_didLoopReload &&
+    totalRowPages > 0 &&
+    rowPage === 0 && colGroup === 0 &&
+    (prevRow !== 0 || prevCol !== 0)
+  ) {
+    _didLoopReload = true;
+    setTimeout(() => { location.reload(); }, RELOAD_DELAY_MS);
+    return;
+  }
+
+  // 2) Trường hợp "không hề di chuyển" (ví dụ chỉ 1 trang/1 nhóm cột) -> đếm tick rồi reload
+  const moved = (prevRow !== rowPage) || (prevCol !== colGroup);
+  if (RELOAD_ON_LOOP && !_didLoopReload && !moved) {
+    _noMoveTicks += 1;
+    if (_noMoveTicks >= NO_MOVE_RELOAD_TICKS) {
+      _didLoopReload = true;
+      setTimeout(() => { location.reload(); }, RELOAD_DELAY_MS);
+    }
+  } else {
+    // Hễ có di chuyển thì reset bộ đếm
+    _noMoveTicks = 0;
+  }
+}
 
   // Timer
   let timer = null;

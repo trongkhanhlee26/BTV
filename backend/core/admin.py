@@ -1,12 +1,13 @@
 from django.contrib import admin
+from django.utils.html import mark_safe
 from .models import (
     ThiSinh, GiamKhao, CuocThi, VongThi, BaiThi, PhieuChamDiem,
-    BaiThiTemplateSection, BaiThiTemplateItem,
+    BaiThiTemplateSection, BaiThiTemplateItem, CapThiDau, ThiSinhCapThiDau, BanGiamDoc, BattleVote
 )
 
 @admin.register(ThiSinh)
 class ThiSinhAdmin(admin.ModelAdmin):
-    list_display = ("maNV", "hoTen", "chiNhanh", "vung", "donVi", "nhom", "ds_cuoc_thi")
+    list_display = ("maNV", "hoTen", "chiNhanh", "vung", "donVi", "nhom", "image_url", "ds_cuoc_thi")
     list_filter = ("cuocThi",)   # đúng tên field M2M
     search_fields = ("maNV", "hoTen", "email", "vung", "donVi")
 
@@ -49,7 +50,7 @@ class VongThiAdmin(admin.ModelAdmin):
 @admin.register(BaiThi)
 class BaiThiAdmin(admin.ModelAdmin):
     list_display = ("ma", "tenBaiThi", "cachChamDiem", "vongThi", "giam_khao")
-    search_fields = ("maBaiThi", "tenBaiThi")
+    search_fields = ("ma", "tenBaiThi")
     list_filter = ("vongThi",)
 
     def giam_khao(self, obj):
@@ -58,7 +59,7 @@ class BaiThiAdmin(admin.ModelAdmin):
 @admin.register(PhieuChamDiem)
 class PhieuChamDiemAdmin(admin.ModelAdmin):
     list_display = ("maPhieu", "thiSinh", "giamKhao", "baiThi", "diem", "maCuocThi", "thoiGian", "updated_at")
-    search_fields = ("thiSinh__maNV", "giamKhao__maNV", "baiThi__maBaiThi", "maCuocThi")
+    search_fields = ("thiSinh__maNV", "giamKhao__maNV", "baiThi__ma", "maCuocThi")
     list_filter = ("maCuocThi", "baiThi")
     
 @admin.register(BaiThiTemplateSection)
@@ -72,3 +73,68 @@ class BaiThiTemplateItemAdmin(admin.ModelAdmin):
     list_display = ("id", "section", "stt", "content", "max_score")
     list_filter = ("section__baiThi",)
     search_fields = ("content", "section__title", "section__baiThi__ma")
+
+@admin.register(BanGiamDoc)
+class BanGiamDocAdmin(admin.ModelAdmin):
+    list_display = ("maBGD", "ten", "token", "created_at")
+    search_fields = ("maBGD", "ten", "token")
+class ThiSinhCapThiDauInline(admin.TabularInline):
+    model = ThiSinhCapThiDau
+    extra = 0
+    fields = ("side", "slot", "thiSinh", "thiSinh_image")
+    readonly_fields = ("thiSinh_image",)
+
+    def thiSinh_image(self, obj):
+        if not obj.pk or not getattr(obj.thiSinh, "display_image_url", None):
+            return ""
+        url = obj.thiSinh.display_image_url
+        return mark_safe(f'<img src="{url}" style="height:50px;" />')
+    thiSinh_image.short_description = "Ảnh thí sinh"
+
+@admin.register(CapThiDau)
+class CapThiDauAdmin(admin.ModelAdmin):
+    list_display = ("maCapDau", "cuocThi", "vongThi", "thuTuThiDau", "active", "created_at")
+    list_filter = ("cuocThi", "vongThi", "active")
+    search_fields = ("maCapDau", "cuocThi__ma", "cuocThi__tenCuocThi")
+    ordering = ("cuocThi", "thuTuThiDau")
+    inlines = [ThiSinhCapThiDauInline]
+
+class BattleVoteInline(admin.TabularInline):
+    model = BattleVote
+    extra = 0
+    fields = ("giamKhao", "stars", "note", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+
+@admin.register(ThiSinhCapThiDau)
+class ThiSinhCapThiDauAdmin(admin.ModelAdmin):
+    list_display = ("pair", "side", "slot", "thiSinh", "thiSinh_image_url")
+    list_filter = ("pair__cuocThi", "side")
+    search_fields = ("thiSinh__maNV", "thiSinh__hoTen", "pair__maCapDau")
+    inlines = [BattleVoteInline]
+
+    def thiSinh_image_url(self, obj):
+        """
+        Hiển thị URL ảnh lấy từ ThiSinh.image_url (hoặc display_image_url).
+        """
+        if getattr(obj.thiSinh, "display_image_url", None):
+            return obj.thiSinh.display_image_url
+        return ""
+    thiSinh_image_url.short_description = "Image URL"
+
+@admin.register(BattleVote)
+class BattleVoteAdmin(admin.ModelAdmin):
+    list_display = ("id", "giamKhao", "entry", "stars", "short_note", "created_at", "updated_at")
+    list_filter = ("stars", "giamKhao", "entry__pair__cuocThi")
+    search_fields = (
+        "giamKhao__maNV",
+        "giamKhao__hoTen",
+        "entry__thiSinh__maNV",
+        "entry__thiSinh__hoTen",
+        "entry__pair__maCapDau",
+    )
+
+    def short_note(self, obj):
+        if not obj.note:
+            return ""
+        return (obj.note[:40] + "…") if len(obj.note) > 40 else obj.note
+    short_note.short_description = "Ghi chú"
