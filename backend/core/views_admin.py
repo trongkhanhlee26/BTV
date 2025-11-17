@@ -120,7 +120,6 @@ def _read_csv(file, expected_cols):
     return data
 
 @judge_required
-@staff_member_required
 def import_view(request):
     preselected_ma = None
     q = request.GET.get("ct") or request.POST.get("maCT")  # cả GET & POST
