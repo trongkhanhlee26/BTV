@@ -593,6 +593,11 @@
     const voteModalCancel = $("voteModalCancel");
     const voteModalOk = $("voteModalOk");
 
+    const voteInfoName = $("voteInfoName");
+    const voteInfoId   = $("voteInfoId");
+    const voteStarsRow = $("voteStarsRow");
+    const voteNote     = $("voteNote");
+
     let state = {
       pairs: [],
       current: 0,
@@ -707,7 +712,12 @@
               <div class="fighter-photo-wrap">${leftImg}</div>
               <div class="fighter-name">${leftName}</div>
               <div class="fighter-id">${leftId}</div>
-              ${left ? `<button class="btn-vote" data-side="L" data-manv="${leftId}" data-name="${leftName}">Vote</button>` : ""}
+              ${left ? `<button class="btn-vote"
+                  data-side="L"
+                  data-manv="${leftId}"
+                  data-name="${leftName}"
+                  data-pair-id="${pair.id}"
+                  data-pair-code="${pair.maCapDau}">Vote</button>` : ""}
             </div>
 
             <img src="${VS_IMG_URL}" alt="VS" class="vs-img">
@@ -717,7 +727,12 @@
               <div class="fighter-photo-wrap">${rightImg}</div>
               <div class="fighter-name">${rightName}</div>
               <div class="fighter-id">${rightId}</div>
-              ${right ? `<button class="btn-vote" data-side="R" data-manv="${rightId}" data-name="${rightName}">Vote</button>` : ""}
+              ${right ? `<button class="btn-vote"
+                   data-side="R"
+                   data-manv="${rightId}"
+                   data-name="${rightName}"
+                   data-pair-id="${pair.id}"
+                   data-pair-code="${pair.maCapDau}">Vote</button>` : ""}
             </div>
           </div>
         </div>
@@ -741,13 +756,17 @@
 
       slidesEl.querySelectorAll(".btn-vote").forEach(btn=>{
         btn.addEventListener("click", ()=>{
-          const name = btn.getAttribute("data-name") || "";
-          const manv = btn.getAttribute("data-manv") || "";
-          state.currentFighter = { name, manv };
+          const name      = btn.getAttribute("data-name") || "";
+          const manv      = btn.getAttribute("data-manv") || "";
+          const side      = btn.getAttribute("data-side") || "";
+          const pairId    = btn.getAttribute("data-pair-id") || "";
+          const pairCode  = btn.getAttribute("data-pair-code") || "";
+
+          state.currentFighter = { name, manv, side, pairId, pairCode };
 
           // set thông tin thí sinh
           voteInfoName.textContent = name || "---";
-          voteInfoId.textContent = manv ? `Mã NV: ${manv}` : "";
+          voteInfoId.textContent = manv ? `Mã NV: ${manv} — Cặp: ${pairCode || ""}` : "";
 
           // reset rating & note mỗi lần mở popup
           state.voteRating = 0;
@@ -797,20 +816,52 @@
     voteModalCloseX.addEventListener("click", closeModal);
     voteModalCancel.addEventListener("click", closeModal);
     voteModalOk.addEventListener("click", ()=>{
+      if (!state.currentFighter){
+        alert("Không xác định được thí sinh.");
+        return;
+      }
+      if (!state.voteRating || state.voteRating < 1){
+        alert("Vui lòng chọn ít nhất 1 sao trước khi gửi.");
+        return;
+      }
+
       state.voteNote = voteNote.value || "";
-      console.log("VOTE:", {
-        fighter: state.currentFighter,
-        rating: state.voteRating,
+
+      const payload = {
+        pair_id: state.currentFighter.pairId,
+        maNV: state.currentFighter.manv,
+        side: state.currentFighter.side,
+        stars: state.voteRating,
         note: state.voteNote,
+      };
+
+      fetch("/battle/vote", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+      .then(res => res.json().then(data => ({ status: res.status, data })))
+      .then(({ status, data }) => {
+        if (!data.ok){
+          const msg = data.error || `Lỗi (${status}) khi lưu vote.`;
+          alert(msg);
+          return;
+        }
+        alert("Đã lưu vote thành công!");
+        closeModal();
+      })
+      .catch(err => {
+        console.error("Error submit vote:", err);
+        alert("Có lỗi khi gửi vote. Vui lòng thử lại.");
       });
-      closeModal();
     });
 
     voteModal.addEventListener("click", (e)=>{
       if (e.target === voteModal) closeModal();
     });
 
-    // load dữ liệu cặp đấu 1 lần (không dùng WebSocket nữa)
     fetch("/battle/pairing/state")
       .then(res => res.json())
       .then(data => {

@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from django.db import transaction
-from .models import CuocThi, ThiSinh, CapThiDau, ThiSinhCapThiDau
+from .models import CuocThi, CapThiDau, ThiSinhCapThiDau, BattleVote, GiamKhao
 import unicodedata
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
@@ -239,3 +239,131 @@ def save_pairing(request):
         if request.user.is_authenticated else "admin",
     }
     return JsonResponse({"ok": True, "data": payload})
+
+def _get_current_judge(user):
+    """
+    Tìm giám khảo tương ứng với tài khoản đang đăng nhập.
+    Ưu tiên:
+      1) maNV ~ username (không phân biệt hoa/thường, bỏ khoảng trắng dư)
+      2) email ~ email (không phân biệt hoa/thường, bỏ khoảng trắng dư)
+    Trả về instance GiamKhao hoặc None.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return None
+
+    username = (getattr(user, "username", "") or "").strip()
+    email = (getattr(user, "email", "") or "").strip()
+
+    qs = GiamKhao.objects.all()
+
+    # 1) Map theo maNV = username (không phân biệt hoa/thường)
+    if username:
+        jk = qs.filter(maNV__iexact=username).first()
+        if jk:
+            return jk
+
+    # 2) Map theo email
+    if email:
+        jk = qs.filter(email__iexact=email).first()
+        if jk:
+            return jk
+
+    return None
+
+
+@csrf_exempt
+def submit_vote(request):
+    """
+    API lưu vote vào BattleVote theo tài khoản GIÁM KHẢO đang đăng nhập.
+    Body JSON: {
+      "pair_id": 123,
+      "maNV": "NV001",
+      "side": "L" hoặc "R",
+      "stars": 1..5,
+      "note": "ghi chú"
+    }
+    """
+    if request.method != "POST":
+        return HttpResponseBadRequest("Method not allowed")
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False, "error": "Bạn chưa đăng nhập."}, status=401)
+
+    # Parse JSON
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return HttpResponseBadRequest("Invalid JSON")
+
+    pair_id = body.get("pair_id")
+    maNV = body.get("maNV")
+    side = body.get("side")
+    stars = body.get("stars")
+    note = (body.get("note") or "").strip()
+
+    # Validate cơ bản
+    if not pair_id or not maNV or side not in ("L", "R"):
+        return HttpResponseBadRequest("Thiếu pair_id / maNV / side")
+
+    try:
+        stars = int(stars)
+    except Exception:
+        return HttpResponseBadRequest("stars phải là số nguyên")
+
+    if stars < 1 or stars > 5:
+        return HttpResponseBadRequest("stars phải từ 1 đến 5")
+
+    # Tìm giám khảo tương ứng với tài khoản đang đăng nhập
+    # Ưu tiên map theo maNV = username, nếu không thấy thì fallback theo email
+    judge = _get_current_judge(request.user)
+
+    if not judge:
+        return JsonResponse(
+            {"ok": False, "error": "Không tìm thấy thông tin giám khảo cho tài khoản hiện tại."},
+            status=403
+        )
+
+    # Tìm entry (ThiSinhCapThiDau) theo pair + thí sinh + side
+    try:
+        entry = ThiSinhCapThiDau.objects.select_related("thiSinh", "pair").get(
+            pair_id=pair_id,
+            thiSinh__maNV=maNV,
+            side=side,
+        )
+    except ThiSinhCapThiDau.DoesNotExist:
+        return JsonResponse(
+            {"ok": False, "error": "Không tìm thấy thí sinh trong cặp đấu tương ứng."},
+            status=404
+        )
+
+    vote, created = BattleVote.objects.update_or_create(
+        giamKhao=judge,
+        entry=entry,
+        defaults={
+            "stars": stars,
+            "note": note,
+        },
+    )
+
+    # Tính lại tổng và trung bình sau khi vote
+    total_votes = entry.total_votes
+    avg_stars = entry.avg_stars
+
+    return JsonResponse({
+        "ok": True,
+        "created": created,
+        "stars": vote.stars,
+        "note": vote.note,
+        "total_votes": total_votes,
+        "avg_stars": avg_stars,
+        "entry": {
+            "pair_id": entry.pair_id,
+            "maNV": entry.thiSinh.maNV,
+            "side": entry.side,
+        },
+        "giamKhao": {
+            "maNV": judge.maNV,
+            "hoTen": judge.hoTen,
+        }
+    })
+
