@@ -392,69 +392,88 @@ function saveTplScores() {
     });
   }
 
-  (function enhanceSearchGuard() {
-    const form = document.getElementById('searchForm');
-    const btn = form ? form.querySelector('button[type="submit"]') : null;
-    const input = document.getElementById('searchInput');
-    const ctSelect = document.getElementById('ctSelect');
-    const hintCard = document.getElementById('searchHintCard');
-    const hintText = document.getElementById('searchHintText');
+(function enhanceSearchGuard() {
+  const form = document.getElementById('searchForm');
+  const btn = form ? form.querySelector('button[type="submit"]') : null;
+  const input = document.getElementById('searchInput');
+  const ctSelect = document.getElementById('ctSelect');
+  const vtSelect = document.getElementById('vtSelect');
+  const btSelect = document.getElementById('btSelect');
+  const hintCard = document.getElementById('searchHintCard');
+  const hintText = document.getElementById('searchHintText');
+  const scoreCard = document.getElementById('scoreCard');
 
-    if (!form || !btn || !input) return;
+  if (!form || !btn || !input) return;
 
-    // helper hiển thị/ẩn thẻ thông báo
-    function showHint(text) {
-      if (!hintCard || !hintText) return;
-      hintText.innerHTML = text;
-      hintCard.style.display = 'block';
-      hintCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  function showHint(text) {
+    if (!hintCard || !hintText) return;
+    hintText.innerHTML = text;
+    hintCard.style.display = 'block';
+    hintCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function hideHint() {
+    if (hintCard) hintCard.style.display = 'none';
+  }
+
+  hideHint();
+
+  form.addEventListener('submit', async (e) => {
+    const q = (input.value || '').trim();
+    const ct = ctSelect ? ctSelect.value : '';
+    const vt = vtSelect ? vtSelect.value : '';
+    const bt = btSelect ? btSelect.value : '';
+
+    if (!ct) {
+      e.preventDefault();
+      showHint('Vui lòng chọn <b>Cuộc thi</b> bên trên trước khi tìm thí sinh.');
+      ctSelect && ctSelect.focus();
+      return;
     }
 
-    function hideHint() {
-      if (hintCard) hintCard.style.display = 'none';
+    // BẮT BUỘC chọn Vòng thi
+    if (!vt) {
+      e.preventDefault();
+      showHint('Vui lòng chọn <b>Vòng thi</b> trước khi chấm điểm.');
+      if (scoreCard) scoreCard.style.display = 'none';
+      vtSelect && vtSelect.focus();
+      return;
     }
 
-    // ban đầu luôn ẩn thông báo
-    hideHint();
+    // BẮT BUỘC chọn Bài thi
+    if (!bt) {
+      e.preventDefault();
+      showHint('Vui lòng chọn <b>Bài thi</b> (mỗi lần chỉ chấm 1 bài) trước khi chấm điểm.');
+      if (scoreCard) scoreCard.style.display = 'none';
+      btSelect && btSelect.focus();
+      return;
+    }
 
-    // xử lý khi submit
-    form.addEventListener('submit', async (e) => {
-      const q = (input.value || '').trim();
-      const ct = ctSelect ? ctSelect.value : '';
+    if (!q) {
+      e.preventDefault();
+      showHint('Vui lòng nhập <b>Mã NV</b> hoặc <b>họ tên</b> để tìm thí sinh.');
+      input.focus();
+      if (scoreCard) scoreCard.style.display = 'none';
+      return;
+    }
 
-      if (!ct) {
-        e.preventDefault();
-        showHint('Vui lòng chọn <b>Cuộc thi</b> bên trên trước khi tìm thí sinh.');
-        ctSelect && ctSelect.focus();
+    // vẫn giữ phần kiểm tra thí sinh thuộc cuộc thi như cũ
+    try {
+      const url = `/score/?ajax=suggest&q=${encodeURIComponent(q)}&ct=${encodeURIComponent(ct)}`;
+      const res = await fetch(url, { credentials: 'same-origin' });
+      const list = await res.json();
+
+      if (Array.isArray(list) && list.length > 0) {
+        hideHint();
         return;
       }
+    } catch (err) {
+      e.preventDefault();
+      showHint('Không thể kiểm tra thí sinh lúc này. Vui lòng thử lại sau.');
+    }
+  });
+})();
 
-      // nếu ô nhập rỗng => show thông báo & chặn form
-      if (!q) {
-        e.preventDefault();
-        showHint('Vui lòng nhập <b>Mã NV</b> hoặc <b>họ tên</b> để tìm thí sinh.');
-        input.focus();
-         const scoreCard = document.getElementById('scoreCard');
-         if (scoreCard) scoreCard.style.display = 'none';
-        return;
-      }
-
-      // nếu có nhập -> kiểm tra thí sinh thuộc cuộc thi hay không
-      try {
-        const url = `/score/?ajax=suggest&q=${encodeURIComponent(q)}&ct=${encodeURIComponent(ct)}`;
-        const res = await fetch(url, { credentials: 'same-origin' });
-        const list = await res.json();
-
-        if (Array.isArray(list) && list.length > 0) {
-          hideHint();
-          return;
-        }
-      } catch (err) {
-        e.preventDefault();
-        showHint('Không thể kiểm tra thí sinh lúc này. Vui lòng thử lại sau.');
-      }
-    });
-  })();
 
 
     const ctSelect = document.getElementById('ctSelect');
@@ -600,12 +619,33 @@ function saveTplScores() {
 
     // Save (AJAX)
     if (saveBtn) {
-        saveBtn.addEventListener('click', async function () {
-            const payload = {
-            thiSinh: saveBtn.dataset.ts || '',
-            ct_id: document.querySelector('[name="ct"]')?.value || saveBtn.dataset.ct || null,
-            scores: {}, done: {}, times: {}
-            };
+saveBtn.addEventListener('click', async () => {
+  const thiSinh = saveBtn.dataset.ts || '';
+  if (!thiSinh) {
+    showToast('Không có thông tin thí sinh để lưu.', true);
+    return;
+  }
+
+  const vtSel = document.getElementById('vtSelect');
+  const btSel = document.getElementById('btSelect');
+  const vt = vtSel ? vtSel.value : '';
+  const bt = btSel ? btSel.value : '';
+
+  // BẮT BUỘC chọn Vòng + Bài trước khi lưu
+  if (!vt || !bt) {
+    showToast('Vui lòng chọn đầy đủ Vòng thi và đúng 1 Bài thi trước khi lưu điểm.', true);
+    return;
+  }
+
+  const payload = {
+    thiSinh: saveBtn.dataset.ts || '',
+    ct_id: document.querySelector('[name="ct"]')?.value || saveBtn.dataset.ct || null,
+    vt_id: vt,
+    bt_id: bt,
+    scores: {},
+    done: {},
+    times: {}
+  };
 
             // POINTS
             let hasPointsError = false;

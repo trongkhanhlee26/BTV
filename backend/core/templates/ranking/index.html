@@ -414,6 +414,17 @@ td.num { font-weight: 600; }
 .back-link svg{ width:18px; height:18px; }
 
 .page-title{ margin:0; font-size:20px; line-height:1.2; }
+/* Làm nổi cột Đã hoàn thành */
+.rank-table thead th.col-done,
+.rank-table tbody td.col-done {
+  background: rgba(148, 163, 184, 0.22);  /* sáng hơn xung quanh một chút */
+  width: 120px;
+}
+
+.rank-table tbody td.col-done {
+  text-align: center !important;
+  font-weight: 700;
+}
 
 
     </style>
@@ -463,35 +474,37 @@ td.num { font-weight: 600; }
                 <table class="rank-table" id="rankTable" data-page-size="10" data-interval-ms="5000"
                     data-col-group-size="5">
 <thead>
-  <!-- Hàng 1: Vòng thi (gộp 4 cột cố định + Tổng bằng rowspan=2) -->
-  <tr id="vtRow">
-    <th class="col-rank" rowspan="2">STT</th>
-    <th rowspan="2">Mã NV</th>
-    <th rowspan="2">Họ tên</th>
-    <th rowspan="2">Đơn vị</th>
+  <!-- Hàng 1: Vòng thi (gộp 4 cột cố định + Đã chấm + Tổng, đều rowspan=2) -->
+<tr id="vtRow">
+  <th class="col-rank" rowspan="2">STT</th>
+  <th rowspan="2">Mã NV</th>
+  <th rowspan="2">Họ tên</th>
+  <th rowspan="2">Đơn vị</th>
 
-    {% for g in groups %}
-      <th class="vt-group"
-          data-group-index="{{ forloop.counter0 }}"
-          data-colspan="{{ g.tests|length }}"
-          colspan="{{ g.tests|length }}"
-          style="cursor:pointer;font-weight:800;">
-        {{ g.vong_name }}
+  <!-- Đưa cột này lên ngay sau Đơn vị + đổi tên -->
+  <th rowspan="2" class="col-done">Đã hoàn thành</th>
 
-      </th>
-    {% endfor %}
+  {% for g in groups %}
+    <th class="vt-group"
+        data-group-index="{{ forloop.counter0 }}"
+        data-colspan="{{ g.tests|length }}"
+        colspan="{{ g.tests|length }}"
+        style="cursor:pointer;font-weight:800;">
+      {{ g.vong_name }}
+    </th>
+  {% endfor %}
 
-    <th rowspan="2">Tổng</th>
-  </tr>
+  <!-- Cột Tổng điểm -->
+  <th rowspan="2">Tổng</th>
+</tr>
 
-  <!-- Hàng 2: CHỈ các cột biến thiên (Bài thi + ô Tổng Vòng ẩn) -->
+  <!-- Hàng 2 giữ nguyên như cũ -->
   <tr id="btRow">
     {% for g in groups %}
       {% for t in g.tests %}
         <th class="col-test"
             data-group-index="{{ forloop.parentloop.counter0 }}"
             data-test-index="{{ t.col_index }}">
-          
           <div>{{ t.title }}</div>
         </th>
       {% endfor %}
@@ -510,7 +523,11 @@ td.num { font-weight: 600; }
   <td>{{ r.hoTen }}</td>
   <td>{{ r.donVi }}</td>
 
-  {# MỚI: duyệt từng Vòng, in các bài của Vòng rồi in Tổng Vòng ngay sau đó #}
+  <!-- Đưa cột đã hoàn thành lên đây -->
+  <td class="num col-done">
+    {{ r.done }}/{{ r.total_tests }}
+  </td>
+
   {% for gv in r.groups_view %}
     {% for s in gv.scores %}
       <td class="num col-test" data-kind="test">{{ s|floatformat:0 }}</td>
@@ -520,8 +537,10 @@ td.num { font-weight: 600; }
     </td>
   {% endfor %}
 
+  <!-- Tổng điểm -->
   <td class="total num">{{ r.total|floatformat:0 }}</td>
 </tr>
+
 {% endfor %}
 </tbody>
 

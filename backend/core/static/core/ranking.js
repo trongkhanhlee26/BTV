@@ -19,14 +19,21 @@
   const vtRow = thead.rows[0];                   // hàng Vòng thi
   const btRow = thead.rows[thead.rows.length-1]; // hàng Bài thi
 
-// Trong BODY: vị trí bắt đầu các cột biến thiên (sau 4 cột cố định)
-const fixedPrefixCount = 4;
+// Trong BODY: vị trí bắt đầu các cột biến thiên
+// Giờ ta có 5 cột cố định: STT, Mã NV, Họ tên, Đơn vị, Đã hoàn thành
+const fixedPrefixCount = 5;
 const testsStartIndex  = fixedPrefixCount;
 
 // === Xây mapping header->body bằng cách duyệt tuần tự btRow ===
-const headerCells = Array.from(btRow.cells); // chỉ gồm: [..col-test..][..col-group-total..] (đan xen theo Vòng)
+const headerCells = Array.from(btRow.cells); // chỉ gồm: [..col-test..][..col-group-total..]
 const sampleCells = Array.from(rows[0].cells);
-const totalBodyIndex = sampleCells.length - 1; // cột Tổng cuối bảng
+
+// Cột "Đã hoàn thành" nằm ở index 4 (sau 4 cột đầu)
+const doneBodyIndex  = 4;
+
+// Cột Tổng vẫn là cột cuối cùng
+const totalBodyIndex = sampleCells.length - 1;
+
 
 let bodyCursor = testsStartIndex;
 const headerToBodyIndex = headerCells.map(() => 0);
@@ -161,7 +168,8 @@ const groupsMeta = groupThs.map((gth, gi) => {
     const showBodyIdx = new Set();
 
     // Giữ 4 cột cố định + cột tổng chung
-    for (let i=0; i<fixedPrefixCount; i++) showBodyIdx.add(i);
+    for (let i = 0; i < fixedPrefixCount; i++) showBodyIdx.add(i);
+    showBodyIdx.add(doneBodyIndex);
     showBodyIdx.add(totalBodyIndex);
 
  (colGroups[colGroup] || headerVarIdx).forEach(hIdx => {

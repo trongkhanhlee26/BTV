@@ -1,0 +1,56 @@
+{% load static %}
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>Danh sách Ban Giám Đốc</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin:0; font-family:system-ui,Segoe UI,Roboto,Arial; background:#020617; color:#e5e7eb; }
+    .wrap { max-width:900px; margin:24px auto; padding:16px; }
+    h1 { margin:0 0 16px; font-size:24px; }
+    table { width:100%; border-collapse:collapse; background:#020617; border-radius:12px; overflow:hidden; }
+    th,td { padding:10px 12px; border-bottom:1px solid #1f2937; font-size:14px; }
+    th { background:#0f172a; text-align:left; }
+    tr:hover td { background:#111827; }
+    .empty { padding:12px 0; color:#9ca3af; }
+    a.btn { display:inline-block; padding:6px 10px; border-radius:8px; background:#1d4ed8; color:#fff; text-decoration:none; font-size:13px; }
+    a.btn:hover { background:#2563eb; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Danh sách Ban Giám Đốc</h1>
+  <div style="margin: 12px 0;">
+    <a href="{% url 'bgd-qr-all' %}" class="btn">
+      Tải tất cả mã QR (.zip)
+    </a>
+  </div>
+  {% if bgds %}
+    <table>
+      <thead>
+        <tr>
+          <th>Mã BGD</th>
+          <th>Họ tên</th>
+          <th>Mã QR</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bgds %}
+        <tr>
+          <td>{{ b.maBGD }}</td>
+          <td>{{ b.ten }}</td>
+          <td>
+            <a href="{% url 'bgd-qr-one' b.token %}" class="btn">Xem QR</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">Không có Ban Giám Đốc nào trong hệ thống.</div>
+  {% endif %}
+</div>
+
+</body>
+</html>
