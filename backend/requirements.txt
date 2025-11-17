@@ -8,3 +8,5 @@ dj-database-url
 gunicorn
 whitenoise
 qrcode[pil]
+requests
+Pillow
