@@ -110,22 +110,24 @@
       cursor:pointer; font-size:16px; line-height:1;
     }
 
-    /* Floating Save Button (to, bo góc, góc phải - dưới card) */
+    /* Save button: nhỏ, nằm trên danh sách cặp đấu */
     .btn-save{
-      position:absolute; right:14px; bottom:16px;
-      border:none; cursor:pointer;
-      padding:14px 20px;
-      border-radius:14px;
-      font-size:16px; font-weight:600;
+      border:none;
+      cursor:pointer;
+      padding:8px 16px;
+      border-radius:999px;
+      font-size:13px;
+      font-weight:600;
       background: linear-gradient(135deg, #22c55e, #16a34a);
       color:white;
-      box-shadow: 0 10px 24px rgba(34,197,94,.35), inset 0 1px 0 rgba(255,255,255,.2);
+      box-shadow: 0 6px 16px rgba(34,197,94,.35), inset 0 1px 0 rgba(255,255,255,.2);
+      white-space: nowrap;
+      margin-top: 12px;
     }
     .btn-save:active{ transform: translateY(1px); }
 
     @media (max-width:900px){
       .grid{ grid-template-columns: 1fr; }
-      .btn-save{ right:12px; bottom:12px; }
     }
 
     .toast-success{
@@ -147,6 +149,79 @@
     .toast-success.show{
       opacity: 1;
       transform: translateX(-50%) translateY(0);
+    }
+        /* Panel danh sách cặp đã lưu */
+    .pairs-panel{
+      margin-top: 16px;
+      background: rgba(0,0,0,.22);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      padding: 12px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .pairs-header{
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:8px;
+      font-size:14px; font-weight:600;
+    }
+    .pairs-sub{ font-size:13px; opacity:.8; }
+
+    .pair-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:stretch;
+      gap:16px;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(15,23,42,.8);
+      margin-bottom:8px;
+      font-size:13px;
+    }
+    .pair-row:last-child{ margin-bottom:0; }
+
+    .pair-side{
+      flex:1;
+      min-width:140px;
+    }
+    .pair-side-right .side-label,
+    .pair-side-right .side-names{
+      text-align: right;
+    }
+    .pair-center{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      min-width:72px;
+    }
+    .vs-label{
+      font-weight:700;
+      letter-spacing:1px;
+      font-size:14px;
+      opacity:.9;
+    }
+
+    .side-label{
+      opacity:.8; font-size:12px; margin-bottom:2px;
+    }
+    .side-names{
+      font-size:13px;
+    }
+    .btn-pair-del{
+      border:none;
+      background: rgba(239,68,68,.18);
+      color:#fecaca;
+      padding:6px 10px;
+      border-radius:999px;
+      cursor:pointer;
+      font-size:12px;
+      white-space:nowrap;
+    }
+    .btn-pair-del:hover{
+      background: rgba(239,68,68,.28);
     }
   </style>
 {% endblock %}
@@ -190,7 +265,6 @@
             <input class="search" id="rightSearch" placeholder="Nhập mã NV hoặc họ tên..." autocomplete="off" />
             <div class="suggest" id="rightSuggest"></div>
           </div>
-
           <div class="selected-header">
             <div class="selected-title" id="rightTitle">Đã chọn: 0</div>
             <button class="btn-clear" id="rightClear">Xoá chọn</button>
@@ -198,17 +272,26 @@
           <div class="selected" id="rightSelected"></div>
         </div>
       </div>
+      <!-- Nút lưu cấu hình (float dưới góc phải card) -->
+      <button class="btn-save" id="btnSave">Lưu cấu hình</button>
+      <!-- Danh sách các cặp đấu đã lưu -->
+      <div class="pairs-panel">
+        <div class="pairs-header">
+          <div>Danh sách cặp đấu đã lưu</div>
+          <div class="pairs-sub" id="pairsSummary"></div>
+        </div>
+        <div id="pairsList"></div>
+      </div>
       <div id="toastSuccess" class="toast-success">
         Tạo cặp đấu thành công.
       </div>
-      <!-- Nút lưu cấu hình (float dưới góc phải card) -->
-      <button class="btn-save" id="btnSave">Lưu cấu hình</button>
     </div>
   </div>
 
   <script>
     const DATA = JSON.parse('{{ contestants_json|escapejs }}'); // [{maNV, hoTen, ...}]
     const USED = new Set(JSON.parse('{{ used_ids_json|default:"[]"|escapejs }}'));
+    const PAIRS = JSON.parse('{{ pairs_json|default:"[]"|escapejs }}');
     const left = new Set();
     const right = new Set();
 
@@ -220,7 +303,13 @@
       leftTitle: $("leftTitle"), rightTitle: $("rightTitle"),
       leftClear: $("leftClear"), rightClear: $("rightClear"),
       btnSave: $("btnSave"), countInfo: $("countInfo"), alertBox: $("alertBox"),
+      pairsList: $("pairsList"),
+      pairsSummary: $("pairsSummary"),
     };
+
+    function getCSRFToken() {
+      return (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+    }
 
     function textOf(row){ return `${row.maNV} — ${row.hoTen}`; }
 
@@ -267,6 +356,93 @@
       setTimeout(() => {
         t.classList.remove("show");
       }, 2000);
+    }
+
+    function renderPairsList(){
+      const list = el.pairsList;
+      if (!PAIRS || PAIRS.length === 0){
+        list.innerHTML = `<div style="font-size:13px; opacity:.7;">Chưa có cặp đấu nào được lưu.</div>`;
+        el.pairsSummary.textContent = "";
+        return;
+      }
+
+      el.pairsSummary.textContent = `${PAIRS.length} cặp đấu`;
+
+      list.innerHTML = PAIRS.map(p => {
+        const leftNames = p.left.map(x => `${x.maNV} — ${x.hoTen}`).join("<br>");
+        const rightNames = p.right.map(x => `${x.maNV} — ${x.hoTen}`).join("<br>");
+        return `
+          <div class="pair-row" data-id="${p.id}">
+            <div class="pair-side">
+              <div class="side-label">Đội Trái</div>
+              <div class="side-names">${leftNames || '<em>Trống</em>'}</div>
+            </div>
+            <div class="pair-center">
+              <div class="vs-label">VS</div>
+              <button class="btn-pair-del" type="button">Xoá cặp</button>
+            </div>
+            <div class="pair-side pair-side-right">
+              <div class="side-label">Đội Phải</div>
+              <div class="side-names">${rightNames || '<em>Trống</em>'}</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      // bind nút xoá
+      Array.from(list.querySelectorAll(".pair-row")).forEach(row => {
+        const id = row.getAttribute("data-id");
+        const btn = row.querySelector(".btn-pair-del");
+        btn.addEventListener("click", () => {
+          handleDeletePair(id);
+        });
+      });
+    }
+
+    async function handleDeletePair(pairId){
+      if (!confirm("Bạn chắc chắn muốn xoá cặp đấu này?")) return;
+
+      try {
+        const res = await fetch("/battle/pairing/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCSRFToken(),
+          },
+          body: JSON.stringify({ pair_id: pairId })
+        });
+
+        if (!res.ok){
+          const txt = await res.text();
+          showAlert("Không thể xoá cặp đấu: " + txt);
+          return;
+        }
+
+        const data = await res.json();
+        if (!data.ok){
+          showAlert("Không thể xoá cặp đấu: " + (data.error || "Unknown error"));
+          return;
+        }
+
+        // Xoá cặp khỏi mảng PAIRS
+        const idNum = parseInt(pairId, 10);
+        const idx = PAIRS.findIndex(p => p.id === idNum);
+        if (idx !== -1){
+          PAIRS.splice(idx, 1);
+        }
+
+        // Giải phóng các mã NV trong released_ids -> xoá khỏi USED
+        (data.released_ids || []).forEach(id => {
+          USED.delete(id);
+        });
+
+        // Cập nhật lại UI: counts, suggestion, danh sách cặp
+        updateState();
+        renderPairsList();
+
+      } catch (e) {
+        showAlert("Lỗi xoá cặp đấu: " + e.message);
+      }
     }
 
     function renderSelected(side){
@@ -340,7 +516,7 @@
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/)||[])[1] || ""
+            "X-CSRFToken": getCSRFToken(),
           },
           body: JSON.stringify(payload)
         });
@@ -373,5 +549,6 @@
     });
     // init
     updateState();
+    renderPairsList();
   </script>
 {% endblock %}
