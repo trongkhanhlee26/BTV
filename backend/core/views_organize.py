@@ -384,6 +384,18 @@ def organize_view(request, ct_id=None):
 
                 return JsonResponse({"ok": True, "rows": rows})
 
+            if action == "delete_bt":
+                btid = request.POST.get("baiThi_id")
+                try:
+                    bt = BaiThi.objects.get(id=btid)
+                except BaiThi.DoesNotExist:
+                    return JsonResponse({"ok": False, "error": "Bài thi không tồn tại."}, status=404)
+
+                name = bt.tenBaiThi
+                bt.delete()
+
+                return JsonResponse({"ok": True, "message": f"Đã xoá bài thi {name}."})
+
             # --------------------------------------------------
             # Action không khớp
             # --------------------------------------------------

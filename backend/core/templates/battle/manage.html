@@ -223,6 +223,103 @@
     .btn-pair-del:hover{
       background: rgba(239,68,68,.28);
     }
+
+    @media (max-width: 768px) {
+
+    /* Card chính thu gọn lại */
+    .card {
+      padding: 12px;
+      border-radius: 14px;
+      min-height: unset;
+    }
+
+    .grid {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    h3 {
+      font-size: 15px;
+    }
+
+    .search {
+      font-size: 14px;
+      padding: 10px 12px;
+    }
+
+    /* Panel cặp đấu */
+    .pairs-panel {
+      max-height: 400px;
+      padding: 10px;
+      border-radius: 10px;
+    }
+
+    .pairs-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      font-size: 14px;
+    }
+
+    /* Mỗi cặp đấu được làm dạng “thẻ mobile” dễ đọc hơn */
+    .pair-row {
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      gap: 10px;
+      border-radius: 12px;
+    }
+
+    .pair-side {
+      width: 100%;
+    }
+
+    .side-label {
+      font-size: 12px;
+      opacity: .8;
+      margin-bottom: 3px;
+    }
+
+    .side-names {
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    /* VS đưa vào giữa theo kiểu mobile */
+    .pair-center {
+      order: -1;
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      width: 100%;
+      margin-bottom: 4px;
+    }
+
+    .vs-label {
+      font-size: 16px;
+      font-weight: 700;
+      opacity: .95;
+    }
+
+    .btn-pair-del {
+      padding: 6px 14px;
+      font-size: 13px;
+    }
+
+    /* Thu nhỏ chips */
+    .chip {
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+
+    .btn-save {
+      width: 100%;
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 14px;
+    }
+  }
   </style>
 {% endblock %}
 
