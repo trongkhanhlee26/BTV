@@ -74,15 +74,16 @@ def organize_view(request, ct_id=None):
                 ten_bt = (request.POST.get("tenBaiThi") or "").strip()
                 method = request.POST.get("phuongThucCham") or "POINTS"
                 max_diem = request.POST.get("cachChamDiem")
-                judge_ids = request.POST.getlist("judge_id")
+                judge_code = (request.POST.get("judge_id") or "").strip()  # CHỈ 1 mã, có thể rỗng
 
                 if not vt_id or not ten_bt:
                     messages.error(request, "Vui lòng chọn vòng thi và nhập tên bài thi.")
                     return redirect(request.path)
 
-                if not judge_ids:
-                    messages.error(request, "Vui lòng chọn giám khảo chấm cho bài thi.")
-                    return redirect(request.path)
+                # ❌ BỎ ràng buộc bắt buộc phải chọn giám khảo
+                # if not judge_ids:
+                #     messages.error(request, "Vui lòng chọn giám khảo chấm cho bài thi.")
+                #     return redirect(request.path)
 
                 if method == "POINTS" and not max_diem:
                     messages.error(request, "Vui lòng nhập điểm tối đa cho phương thức thang điểm.")
@@ -96,12 +97,12 @@ def organize_view(request, ct_id=None):
                     cachChamDiem=int(max_diem) if (method == "POINTS" and max_diem) else 0,
                 )
 
-                # Phân công giám khảo
-                for judge_id in judge_ids:
-                    gk = GiamKhao.objects.filter(maNV=judge_id, role="JUDGE").first()
+                # ✅ Nếu có chọn giám khảo thì mới tạo phân công
+                if judge_code:
+                    gk = GiamKhao.objects.filter(maNV=judge_code, role="JUDGE").first()
                     if not gk:
                         bt.delete()
-                        messages.error(request, f"Giám khảo {judge_id} không hợp lệ.")
+                        messages.error(request, f"Giám khảo {judge_code} không hợp lệ.")
                         return redirect(request.path)
                     GiamKhaoBaiThi.objects.get_or_create(giamKhao=gk, baiThi=bt)
 
@@ -110,6 +111,7 @@ def organize_view(request, ct_id=None):
                     f"Tạo bài thi “{bt.tenBaiThi}” trong vòng “{vong_thi.tenVongThi}” thành công."
                 )
                 return redirect(request.path)
+
 
             # --------------------------------------------------
             # Lưu cấu hình thang thời gian (từ popup TIME)
@@ -383,6 +385,18 @@ def organize_view(request, ct_id=None):
                     return JsonResponse({"ok": False, "error": "Không đọc được dòng hợp lệ nào (từ hàng 3)."}, status=400)
 
                 return JsonResponse({"ok": True, "rows": rows})
+            
+            if action == "delete_vt":
+                vtid = request.POST.get("vongThi_id")
+                try:
+                    vt = VongThi.objects.get(id=vtid)
+                except VongThi.DoesNotExist:
+                    return JsonResponse({"ok": False, "error": "Vòng thi không tồn tại."}, status=404)
+
+                name = vt.tenVongThi
+                vt.delete()  # sẽ cascade xoá các bài thi + cấu hình liên quan
+
+                return JsonResponse({"ok": True, "message": f"Đã xoá vòng thi {name}."})
 
             if action == "delete_bt":
                 btid = request.POST.get("baiThi_id")

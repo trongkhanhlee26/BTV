@@ -764,14 +764,13 @@ document.addEventListener('DOMContentLoaded', function () {
     console.warn('[confirm] modal elements not found');
   }
 
-  // === Client-side validate cho form "Thêm bài" (không reload khi thiếu giám khảo) ===
+  // === Client-side validate cho form "Thêm bài" ===
   (function initCreateBtValidation() {
     // quét tất cả form có action=create_bt
     document.querySelectorAll('form').forEach(function (f) {
       const act = f.querySelector('input[name="action"]')?.value;
       if (act !== 'create_bt') return;
 
-      const judgeSel = f.querySelector('select[name="judge_id"]');
       const methodSel = f.querySelector('select[name="phuongThucCham"]');
       const maxInput  = f.querySelector('input[name="cachChamDiem"]');
 
@@ -797,7 +796,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
       // gỡ lỗi khi người dùng thay đổi
       ['change','input'].forEach(evt => {
-        judgeSel && judgeSel.addEventListener(evt, () => clearError(judgeSel));
         maxInput && maxInput.addEventListener(evt, () => clearError(maxInput));
         methodSel && methodSel.addEventListener(evt, () => clearError(maxInput));
       });
@@ -805,13 +803,7 @@ document.addEventListener('DOMContentLoaded', function () {
       f.addEventListener('submit', function (e) {
         let hasErr = false;
 
-        // 1) bắt buộc có giám khảo
-        if (!judgeSel || !judgeSel.value) {
-          hasErr = true;
-          addError(judgeSel, 'Vui lòng chọn giám khảo chấm.');
-        }
-
-        // 2) nếu là thang điểm thì bắt buộc nhập max điểm hợp lệ
+        // ✅ CHỈ check thang điểm: bắt buộc nhập max điểm hợp lệ
         if (methodSel && methodSel.value === 'POINTS') {
           const v = (maxInput?.value || '').trim();
           if (!v || isNaN(v) || Number(v) < 1) {
@@ -824,6 +816,79 @@ document.addEventListener('DOMContentLoaded', function () {
           e.preventDefault();
         }
       });
+    });
+  })();
+
+  // === Thu gọn / mở rộng Vòng thi ===
+  (function initToggleVT() {
+    document.body.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-vt-toggle]');
+      if (!btn) return;
+
+      const id = btn.getAttribute('data-vt-toggle');
+      const body = document.querySelector(`[data-vt-body="${id}"]`);
+      if (!body) return;
+
+      const isHidden = body.style.display === 'none';
+      body.style.display = isHidden ? '' : 'none';
+
+      // đổi trạng thái mũi tên
+      btn.classList.toggle('is-collapsed', !isHidden);
+    });
+  })();
+
+  // === Xóa Vòng thi ===
+  (function initDeleteVT() {
+    const modal = document.getElementById("delete-vt-modal");
+    const msg = document.getElementById("delete-vt-message");
+    const btnOk = document.getElementById("delete-vt-ok");
+    const btnCancel = document.getElementById("delete-vt-cancel");
+
+    let currentId = null;
+
+    // Mở modal khi click nút x vòng thi
+    document.body.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-delete-vt]");
+      if (!btn) return;
+
+      currentId = btn.getAttribute("data-vtid");
+      const name = btn.getAttribute("data-vtname") || "";
+
+      msg.textContent = `Bạn có muốn xóa vòng thi “${name}”?`;
+      modal.style.display = "flex";
+    });
+
+    btnCancel.addEventListener("click", () => {
+      modal.style.display = "none";
+      currentId = null;
+    });
+
+    btnOk.addEventListener("click", async () => {
+      if (!currentId) return;
+
+      try {
+        const form = new FormData();
+        form.append("action", "delete_vt");
+        form.append("vongThi_id", currentId);
+
+        const res = await fetch(window.location.pathname, {
+          method: "POST",
+          body: form,
+          headers: {
+            "X-CSRFToken": document.cookie.match(/csrftoken=([^;]+)/)[1]
+          }
+        });
+
+        const txt = await res.text();
+        console.log(txt);
+        location.reload();
+      } catch (err) {
+        alert("Không thể xóa vòng thi: " + err.message);
+      }
+    });
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.style.display = "none";
     });
   })();
 
