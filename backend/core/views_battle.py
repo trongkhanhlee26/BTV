@@ -1,11 +1,60 @@
 from django.shortcuts import render
 from django.db import transaction
 from .models import CuocThi, CapThiDau, ThiSinhCapThiDau, BattleVote, GiamKhao
+from django.db.models import Q
 import unicodedata
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 import json
+import os
+from io import BytesIO
+import hashlib
+import requests
+from django.conf import settings
+from PIL import Image
 
+def resize_image_from_url(url, max_height=480):
+    """
+    Tải ảnh từ URL và resize theo chiều cao max_height.
+    Mỗi URL khác nhau sẽ map ra 1 file cache khác nhau (dùng md5(url)).
+    """
+
+    if not url:
+        return ""
+
+    # Dùng hash URL để làm tên file → đổi URL là tự sinh file mới
+    hash_id = hashlib.md5(url.encode("utf-8")).hexdigest()
+    filename = f"{hash_id}.jpg"
+
+    resized_dir = os.path.join(settings.MEDIA_ROOT, "resized")
+    os.makedirs(resized_dir, exist_ok=True)
+
+    resized_path = os.path.join(resized_dir, filename)
+
+    # Nếu file đã tồn tại → dùng luôn, không tải + resize lại
+    if os.path.exists(resized_path):
+        return settings.MEDIA_URL + "resized/" + filename
+
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code != 200:
+            return url
+
+        img = Image.open(BytesIO(response.content))
+
+        # Nếu chiều cao > max_height thì resize
+        w, h = img.size
+        if h > max_height:
+            new_w = int(w * (max_height / h))
+            img = img.resize((new_w, max_height), Image.LANCZOS)
+
+        img.save(resized_path, format="JPEG", quality=85)
+
+        return settings.MEDIA_URL + "resized/" + filename
+
+    except Exception:
+        # Nếu có lỗi cứ fallback về URL gốc để không bị vỡ ảnh
+        return url
 
 def _normalize(s: str) -> str:
     """
@@ -67,6 +116,51 @@ def _get_ck_thi_sinh():
     return ct, _serialize_thisinh(thi_sinh_qs)
 
 
+def _serialize_pairs_for_manage(ct):
+    """
+    Trả về danh sách các cặp đấu hiện tại để hiển thị ở màn quản lý.
+    Không cần ảnh, chỉ cần maNV + hoTen cho từng bên.
+    """
+    if not ct:
+        return []
+
+    pairs_qs = (
+        CapThiDau.objects
+        .filter(cuocThi=ct, active=True)
+        .order_by("thuTuThiDau", "id")
+        .prefetch_related("members__thiSinh")
+    )
+
+    result = []
+    for pair in pairs_qs:
+        left_members = []
+        right_members = []
+
+        for m in pair.members.all():
+            item = {
+                "maNV": m.thiSinh.maNV,
+                "hoTen": m.thiSinh.hoTen,
+            }
+            if m.side == "L":
+                left_members.append((m.slot or 0, item))
+            else:
+                right_members.append((m.slot or 0, item))
+
+        # sort theo slot cho chắc
+        left_members = [item for _, item in sorted(left_members, key=lambda t: (t[0],))]
+        right_members = [item for _, item in sorted(right_members, key=lambda t: (t[0],))]
+
+        result.append({
+            "id": pair.id,
+            "order": pair.thuTuThiDau,
+            "maCapDau": pair.maCapDau,
+            "tenCapDau": pair.tenCapDau or "",
+            "left": left_members,
+            "right": right_members,
+        })
+
+    return result
+
 def battle_view(request):
     # Trang index (trình chiếu): chỉ render, sau này JS có thể đọc cặp đấu từ API pairing_state
     return render(request, "battle/index.html")
@@ -76,18 +170,22 @@ def manage_battle_view(request):
     ct, thi_sinh = _get_ck_thi_sinh()
 
     used_ids = []
+    pairs = []
     if ct:
         used_ids = list(
             ThiSinhCapThiDau.objects.filter(pair__cuocThi=ct)
             .values_list("thiSinh__maNV", flat=True)
         )
+        pairs = _serialize_pairs_for_manage(ct)
 
     ctx = {
         "ck": ct,
         "contestants_json": json.dumps(thi_sinh, ensure_ascii=False),
         "used_ids_json": json.dumps(used_ids, ensure_ascii=False),
+        "pairs_json": json.dumps(pairs, ensure_ascii=False),
     }
     return render(request, "battle/manage.html", ctx)
+
 
 # ===== API: đọc trạng thái cặp đấu hiện tại từ DB =====
 
@@ -113,8 +211,7 @@ def pairing_state(request):
             item = {
                 "maNV": m.thiSinh.maNV,
                 "hoTen": m.thiSinh.hoTen,
-                # ưu tiên image_url trên ThiSinhCapThiDau, nếu trống thì lấy từ thiSinh.hinhAnh (nếu có)
-                "image_url": m.display_image_url,
+                "image_url": resize_image_from_url(m.display_image_url),
             }
             if m.side == "L":
                 left_members.append((m.slot or 0, item))
@@ -240,36 +337,106 @@ def save_pairing(request):
     }
     return JsonResponse({"ok": True, "data": payload})
 
-def _get_current_judge(user):
+@csrf_exempt
+def delete_pair(request):
     """
-    Tìm giám khảo tương ứng với tài khoản đang đăng nhập.
-    Ưu tiên:
-      1) maNV ~ username (không phân biệt hoa/thường, bỏ khoảng trắng dư)
-      2) email ~ email (không phân biệt hoa/thường, bỏ khoảng trắng dư)
-    Trả về instance GiamKhao hoặc None.
+    Xoá một cặp đấu (CapThiDau) và trả về danh sách mã NV được giải phóng.
+    Body JSON: {"pair_id": 123}
+    Sau khi xoá, các thí sinh trong cặp đó sẽ không còn trong ThiSinhCapThiDau
+    => quay lại suggestion để ghép cặp mới.
     """
-    if not getattr(user, "is_authenticated", False):
-        return None
+    if request.method != "POST":
+        return HttpResponseBadRequest("Method not allowed")
 
-    username = (getattr(user, "username", "") or "").strip()
-    email = (getattr(user, "email", "") or "").strip()
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        pair_id = body.get("pair_id")
+    except Exception:
+        return HttpResponseBadRequest("Invalid JSON")
 
-    qs = GiamKhao.objects.all()
+    if not pair_id:
+        return HttpResponseBadRequest("Thiếu pair_id")
 
-    # 1) Map theo maNV = username (không phân biệt hoa/thường)
-    if username:
-        jk = qs.filter(maNV__iexact=username).first()
-        if jk:
-            return jk
+    # Tìm cuộc thi CK để đảm bảo chỉ xoá trong CK
+    ct = _find_chung_ket_competition()
+    if not ct:
+        return HttpResponseBadRequest("Không tìm thấy cuộc thi Chung Kết/CK")
 
-    # 2) Map theo email
-    if email:
-        jk = qs.filter(email__iexact=email).first()
-        if jk:
-            return jk
+    try:
+        pair = CapThiDau.objects.get(id=pair_id, cuocThi=ct)
+    except CapThiDau.DoesNotExist:
+        return HttpResponseBadRequest("Không tìm thấy cặp đấu tương ứng")
 
+    # Lấy danh sách mã NV trong cặp này trước khi xoá
+    member_ids = list(
+        pair.members.select_related("thiSinh").values_list("thiSinh__maNV", flat=True)
+    )
+
+    # Nếu muốn chặn xoá khi đã có vote, có thể bật đoạn này:
+    if BattleVote.objects.filter(entry__pair=pair).exists():
+        return HttpResponseBadRequest("Cặp đấu này đã có phiếu vote, không thể xoá.")
+
+    # Xoá cặp -> cascade xoá ThiSinhCapThiDau (và BattleVote nếu có)
+    pair.delete()
+
+    return JsonResponse({
+        "ok": True,
+        "released_ids": member_ids,
+        "pair_id": pair_id,
+    })
+
+def _session_judge(request):
+    """Ưu tiên giám khảo đang chọn trong session."""
+    jid = request.session.get("judge_pk") or request.session.get("judge_id")
+    if jid:
+        return GiamKhao.objects.filter(pk=jid).first()
     return None
 
+
+def _current_judge(request):
+    """
+    Lấy giám khảo đang đăng nhập giống logic của views_score:
+      1) Ưu tiên session
+      2) Map email → GiamKhao
+      3) Map username → maNV
+      4) Superuser → ADMIN
+    """
+    # 1) Ưu tiên session
+    gk = _session_judge(request)
+    if gk:
+        return gk
+
+    # 2) Map user
+    user = getattr(request, "user", None)
+    if user and user.is_authenticated:
+        email = (getattr(user, "email", "") or "").strip()
+        username = (getattr(user, "username", "") or "").strip()
+
+        # Ưu tiên email
+        if email:
+            gk = GiamKhao.objects.filter(email__iexact=email).first()
+            if gk:
+                return gk
+
+        # Map username → maNV
+        if username:
+            gk = GiamKhao.objects.filter(maNV__iexact=username).first()
+            if gk:
+                return gk
+
+        # Superadmin → ADMIN judge
+        if user.is_superuser or user.is_staff:
+            gk = (
+                GiamKhao.objects.filter(role="ADMIN")
+                .filter(Q(email__iexact=email) | Q(maNV__iexact=username))
+                .first()
+                or GiamKhao.objects.filter(role="ADMIN").order_by("maNV").first()
+            )
+            if gk:
+                return gk
+
+    # Không tìm thấy
+    return None
 
 @csrf_exempt
 def submit_vote(request):
@@ -314,8 +481,7 @@ def submit_vote(request):
         return HttpResponseBadRequest("stars phải từ 1 đến 5")
 
     # Tìm giám khảo tương ứng với tài khoản đang đăng nhập
-    # Ưu tiên map theo maNV = username, nếu không thấy thì fallback theo email
-    judge = _get_current_judge(request.user)
+    judge = _current_judge(request)
 
     if not judge:
         return JsonResponse(
@@ -366,4 +532,3 @@ def submit_vote(request):
             "hoTen": judge.hoTen,
         }
     })
-

@@ -257,18 +257,21 @@ def score_view(request):
         except Exception:
             return HttpResponseBadRequest("Invalid JSON")
 
-        ts_code = (payload.get("thiSinh") or "").strip()
-        ct_id   = payload.get("ct_id")  # <-- thêm
-        scores  = payload.get("scores") or {}
-        done    = payload.get("done")   or {}
-        times   = payload.get("times")  or {}
+        ts_code   = (payload.get("thiSinh") or "").strip()
+        ct_id     = payload.get("ct_id")
+        vt_id     = payload.get("vt_id")
+        bt_id     = payload.get("bt_id")
+        scores    = payload.get("scores") or {}
+        done      = payload.get("done")   or {}
+        times     = payload.get("times")  or {}
         tpl_times = payload.get("tpl_times") or {}
 
-        thi_sinh = ThiSinh.objects.filter(Q(maNV__iexact=ts_code) | Q(hoTen__iexact=ts_code)).first()
+        thi_sinh = ThiSinh.objects.filter(
+            Q(maNV__iexact=ts_code) | Q(hoTen__iexact=ts_code)
+        ).first()
         if not thi_sinh:
             return JsonResponse({"ok": False, "message": "Không tìm thấy thí sinh."}, status=400)
 
-        # Ưu tiên ct_id người dùng đang chọn; nếu không có thì rơi về cuộc thi đang bật
         ct = _pick_competition(int(ct_id)) if ct_id else _active_competition()
         if not ct:
             return JsonResponse({"ok": False, "message": "Chưa có cuộc thi hợp lệ."}, status=400)
@@ -277,7 +280,41 @@ def score_view(request):
         if not judge:
             return JsonResponse({"ok": False, "message": "Bạn chưa đăng nhập giám khảo."}, status=401)
 
-        bai_qs = _assigned_bai_qs(ct, judge).prefetch_related("time_rules", "template_sections__items")
+        # 🔒 BẮT BUỘC phải có vt_id & bt_id
+        if not (vt_id and bt_id):
+            return JsonResponse({
+                "ok": False,
+                "message": "Vui lòng chọn Vòng thi và đúng 1 Bài thi trước khi lưu điểm."
+            }, status=400)
+
+        try:
+            vt_obj = VongThi.objects.get(pk=int(vt_id), cuocThi=ct)
+        except VongThi.DoesNotExist:
+            return JsonResponse({
+                "ok": False,
+                "message": "Vòng thi không hợp lệ trong cuộc thi này."
+            }, status=400)
+
+        try:
+            bt_obj = BaiThi.objects.get(pk=int(bt_id), vongThi=vt_obj)
+        except BaiThi.DoesNotExist:
+            return JsonResponse({
+                "ok": False,
+                "message": "Bài thi không hợp lệ trong vòng đã chọn."
+            }, status=400)
+
+        # 🔒 Chỉ lấy đúng 1 bài thi được phân công cho giám khảo
+        bai_qs = (
+            _assigned_bai_qs(ct, judge, vt=vt_obj)
+            .filter(pk=bt_obj.pk)
+            .prefetch_related("time_rules", "template_sections__items")
+        )
+        if not bai_qs.exists():
+            return JsonResponse({
+                "ok": False,
+                "message": "Bạn không được phân công chấm bài thi này."
+            }, status=403)
+
         bai_map = {b.id: b for b in bai_qs}
 
         def _tpl_max(b):
@@ -523,21 +560,37 @@ def score_view(request):
                     selected_bt = BaiThi.objects.filter(vongThi=selected_vt, id=bt_param).first()
 
 
-    structure, total_max = _load_form_data(selected_ts, ct, request)
-    # === NEW: lọc structure theo vòng/bài người dùng chọn
-    if selected_vt:
-        structure = [blk for blk in structure if getattr(blk.get("vong"), "id", None) == selected_vt.id]
+    # === Chỉ load form khi đã có thí sinh, CT và ĐÃ chọn đúng 1 Bài thi ===
+    structure, total_max = [], 0
+    if ct and selected_ts and bt_param:
+        structure, total_max = _load_form_data(selected_ts, ct, request)
 
-    if selected_bt:
-        new_structure = []
-        for blk in structure:
-            filtered = [b for b in blk.get("bai_list", []) if b.get("id") == selected_bt.id]
-            if filtered:
-                new_structure.append({"vong": blk.get("vong"), "bai_list": filtered})
-        structure = new_structure
+        # lọc theo vòng nếu có
+        if selected_vt:
+            structure = [
+                blk for blk in structure
+                if getattr(blk.get("vong"), "id", None) == selected_vt.id
+            ]
 
-    # Tính lại tổng tối đa cho đúng phần đang hiển thị
-    total_max = sum(b.get("max", 0) for blk in structure for b in blk.get("bai_list", []))
+        # lọc đúng 1 bài thi
+        if selected_bt:
+            new_structure = []
+            for blk in structure:
+                filtered = [b for b in blk.get("bai_list", []) if b.get("id") == selected_bt.id]
+                if filtered:
+                    new_structure.append({"vong": blk.get("vong"), "bai_list": filtered})
+            structure = new_structure
+
+        # Tính lại tổng tối đa đúng với 1 bài đang chấm
+        total_max = sum(
+            b.get("max", 0)
+            for blk in structure
+            for b in blk.get("bai_list", [])
+        )
+    else:
+        # không có bt_param -> không hiển thị gì để chấm
+        structure, total_max = [], 0
+
 
     # --- AJAX: meta cho dropdown động ---
     if request.GET.get("ajax") == "meta":
