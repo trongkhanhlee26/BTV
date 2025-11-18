@@ -66,70 +66,70 @@ document.addEventListener('DOMContentLoaded', function () {
   const inputBT = document.getElementById('tm-btid');
   const inputJSON = document.getElementById('tm-json');
   const form = document.getElementById('tm-form');
-// === Import Excel cho popup THỜI GIAN ===
-const tmImportForm = document.getElementById('tm-import-form');
-const tmImportBtid = document.getElementById('tm-import-btid');
-const tmFile       = document.getElementById('tm-file');
+  // === Import Excel cho popup THỜI GIAN ===
+  const tmImportForm = document.getElementById('tm-import-form');
+  const tmImportBtid = document.getElementById('tm-import-btid');
+  const tmFile       = document.getElementById('tm-file');
 
-// đồng bộ id bài thi cho form import khi mở modal
-function syncTimeImportBtid() {
-  if (tmImportBtid && inputBT) tmImportBtid.value = inputBT.value || '';
-}
-
-
-// tiện ích lấy CSRF
-function getCsrfToken(formEl) {
-  const inp = formEl?.querySelector('input[name="csrfmiddlewaretoken"]');
-  return inp ? inp.value : '';
-}
-
-tmImportForm?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (!tmFile?.files?.length) {
-    alert('Vui lòng chọn tệp .xlsx trước khi import.');
-    return;
+  // đồng bộ id bài thi cho form import khi mở modal
+  function syncTimeImportBtid() {
+    if (tmImportBtid && inputBT) tmImportBtid.value = inputBT.value || '';
   }
-  // bảo đảm btid đã set
-  syncTimeImportBtid();
 
-  const fd = new FormData(tmImportForm);
-  // gửi tới cùng URL trang organize hiện tại
-  const url = window.location.pathname;
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': getCsrfToken(tmImportForm) },
-      body: fd
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      alert(data.error || 'Import thất bại.');
+
+  // tiện ích lấy CSRF
+  function getCsrfToken(formEl) {
+    const inp = formEl?.querySelector('input[name="csrfmiddlewaretoken"]');
+    return inp ? inp.value : '';
+  }
+
+  tmImportForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!tmFile?.files?.length) {
+      alert('Vui lòng chọn tệp .xlsx trước khi import.');
       return;
     }
-    // Xóa tất cả dòng cũ và đổ mới
+    // bảo đảm btid đã set
+    syncTimeImportBtid();
+
+    const fd = new FormData(tmImportForm);
+    // gửi tới cùng URL trang organize hiện tại
+    const url = window.location.pathname;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken(tmImportForm) },
+        body: fd
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.error || 'Import thất bại.');
+        return;
+      }
+      // Xóa tất cả dòng cũ và đổ mới
+      rowsBox.innerHTML = '';
+      (data.rows || []).forEach(addRowFromObj);
+      // Sau khi import, bạn có thể chỉnh sửa tiếp rồi ấn "Lưu cấu hình"
+    } catch (err) {
+      console.error(err);
+      alert('Không thể import. Vui lòng thử lại.');
+    }
+  });
+
+  function openTimeModal(btid, rules) {
+    if (!modal || !rowsBox || !inputBT) {
+      console.warn('[time] elements not found');
+      return;
+    }
+    inputBT.value = btid || '';
     rowsBox.innerHTML = '';
-    (data.rows || []).forEach(addRowFromObj);
-    // Sau khi import, bạn có thể chỉnh sửa tiếp rồi ấn "Lưu cấu hình"
-  } catch (err) {
-    console.error(err);
-    alert('Không thể import. Vui lòng thử lại.');
+    (rules || []).forEach(addRowFromObj);
+
+    // >>> thêm dòng này để form import có đúng bài thi
+    syncTimeImportBtid();
+
+    modal.style.display = 'flex';
   }
-});
-
-function openTimeModal(btid, rules) {
-  if (!modal || !rowsBox || !inputBT) {
-    console.warn('[time] elements not found');
-    return;
-  }
-  inputBT.value = btid || '';
-  rowsBox.innerHTML = '';
-  (rules || []).forEach(addRowFromObj);
-
-  // >>> thêm dòng này để form import có đúng bài thi
-  syncTimeImportBtid();
-
-  modal.style.display = 'flex';
-}
 
   function closeTimeModal() { if (modal) modal.style.display = 'none'; }
 
@@ -826,4 +826,69 @@ function openTimeModal(btid, rules) {
       });
     });
   })();
+
+  // === Xóa bài thi ===
+  (function initDeleteBT() {
+    const modal = document.getElementById("delete-bt-modal");
+    const msg = document.getElementById("delete-bt-message");
+    const btnOk = document.getElementById("delete-bt-ok");
+    const btnCancel = document.getElementById("delete-bt-cancel");
+
+    let currentId = null;
+
+    // Mở modal khi click xoá
+    document.body.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-delete-bt]");
+      if (!btn) return;
+
+      currentId = btn.getAttribute("data-btid");
+      const name = btn.getAttribute("data-btname");
+
+      msg.textContent = `Bạn có muốn xóa bài thi “${name}”?`;
+      modal.style.display = "flex";
+
+      // đóng menu 3 chấm
+      const menu = btn.closest(".kebab")?.querySelector(".kebab-menu");
+      if (menu) menu.style.display = "none";
+    });
+
+    // Hủy
+    btnCancel.addEventListener("click", () => {
+      modal.style.display = "none";
+      currentId = null;
+    });
+
+    // Đồng ý
+    btnOk.addEventListener("click", async () => {
+      if (!currentId) return;
+
+      try {
+        const form = new FormData();
+        form.append("action", "delete_bt");
+        form.append("baiThi_id", currentId);
+
+        const res = await fetch(window.location.pathname, {
+          method: "POST",
+          body: form,
+          headers: {
+            "X-CSRFToken": document.cookie.match(/csrftoken=([^;]+)/)[1]
+          }
+        });
+
+        const txt = await res.text();
+        console.log(txt);
+
+        location.reload();  
+      } catch (err) {
+        alert("Không thể xóa bài thi: " + err.message);
+      }
+    });
+
+    // Click nền để đóng
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.style.display = "none";
+    });
+  })();
 });
+
+
