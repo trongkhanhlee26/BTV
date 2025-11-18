@@ -492,6 +492,37 @@
     max-height: calc(100vh - 48px);
     overflow: auto;
     }
+    .vt-btn-clean {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #e5e7eb;
+    opacity: 0.8;
+    transition: opacity .2s ease, transform .15s ease;
+    }
+
+    .vt-btn-clean:hover {
+        opacity: 1;
+        transform: translateY(-1px);
+    }
+
+    .vt-btn-clean svg {
+        pointer-events: none;
+    }
+
+    /* Mũi tên quay khi thu gọn */
+    .vt-chevron-icon {
+        transition: transform .2s ease;
+    }
+
+    .vt-btn-clean.is-collapsed .vt-chevron-icon {
+        transform: rotate(-90deg);
+    }
+
     </style>
 {% endblock %}
 
@@ -559,22 +590,27 @@
                                     {{ vt.tenVongThi }}
                                 </div>
 
-                                <!-- Nút xoá vòng thi -->
                                 <button type="button"
-                                        class="vt-header-btn"
+                                        class="vt-btn-clean"
                                         title="Xóa vòng thi"
                                         data-delete-vt
                                         data-vtid="{{ vt.id }}"
                                         data-vtname="{{ vt.tenVongThi }}">
-                                    ✕
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
                                 </button>
 
-                                <!-- Nút ẩn/hiện nội dung vòng -->
                                 <button type="button"
-                                        class="vt-header-btn"
+                                        class="vt-btn-clean"
                                         title="Ẩn/hiện vòng thi"
                                         data-vt-toggle="{{ vt.id }}">
-                                    <span class="vt-chevron">▾</span>
+                                    <svg class="vt-chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
                                 </button>
                             </div>
                             <div class="vt-body" data-vt-body="{{ vt.id }}" style="margin-top:8px;">
