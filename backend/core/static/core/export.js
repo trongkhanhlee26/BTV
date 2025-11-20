@@ -330,7 +330,10 @@ function applySticky() {
     const blob = await res.blob();
     const dl = document.createElement('a');
     dl.href = URL.createObjectURL(blob);
-    dl.download = 'export_visible.xlsx';
+    // lấy filename từ header nếu có
+    const dispo = res.headers.get('Content-Disposition') || '';
+    const m = dispo.match(/filename="([^"]+)"/i);
+    dl.download = m ? m[1] : 'export.xlsx';
     document.body.appendChild(dl);
     dl.click();
     dl.remove();

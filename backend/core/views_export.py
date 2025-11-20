@@ -279,7 +279,7 @@ def export_xlsx(request):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     # Tên file: nếu POST visible thì đổi chút cho phân biệt
-    fname = f'export_{ct.ma}.xlsx' if not use_visible else f'export_{ct.ma}_visible.xlsx'
+    fname = f'export_{ct.ma}.xlsx' if not use_visible else f'export_{ct.ma}.xlsx'
     resp["Content-Disposition"] = f'attachment; filename="{fname}"'
     return resp
 def export_page(request):
@@ -296,3 +296,149 @@ def export_page(request):
         "rows": rows,
         "active_cts": active_cts,   # <-- thêm vào context
     })
+# --- FINAL EXPORT (Chung Kết) ---
+from django.db.models import Avg, Sum
+from django.http import JsonResponse
+from .models import CuocThi, VongThi, BaiThi, ThiSinh, PhieuChamDiem, BattleVote
+
+def _find_chung_ket():
+    """
+    Tìm cuộc thi 'Chung Kết' theo nhiều biến thể: 'Chung Kết' / 'Chung Ket' (không dấu).
+    Ưu tiên __iexact, fallback bản không dấu thô.
+    """
+    ct = CuocThi.objects.filter(tenCuocThi__iexact="Chung Kết").first()
+    if not ct:
+        ct = CuocThi.objects.filter(tenCuocThi__iexact="Chung Ket").first()
+    return ct
+
+def _final_columns_and_rows(ct: CuocThi):
+    """
+    Trả về (columns, rows) cho trang Export Chung Kết:
+    - Cột info như export thường: STT, Mã NV, Họ tên, Đơn vị, Chi nhánh, Vùng, Nhóm, Email
+    - Cột điểm: Tổng điểm (vòng Chung kết), Đối kháng (sao TB, 1 số thập phân)
+    """
+    info_titles = ['STT', 'Mã NV', 'Họ tên', 'Đơn vị', 'Chi nhánh', 'Vùng', 'Nhóm', 'Email']
+    columns = info_titles + ['Tổng điểm', 'Đối kháng']
+
+    # 1) Xác định Vòng “Chung Kết” (nếu không tìm được thì lấy tất cả vòng của CT này)
+    vt_ck = VongThi.objects.filter(cuocThi=ct, tenVongThi__iexact="Chung Kết")
+    if not vt_ck.exists():
+        vt_ck = VongThi.objects.filter(cuocThi=ct)
+    vt_ids = list(vt_ck.values_list("id", flat=True))
+
+    # 2) Các bài thi thuộc vòng CK
+    bt_ids = list(BaiThi.objects.filter(vongThi_id__in=vt_ids).values_list("id", flat=True))
+
+    # 3) Map tổng điểm vòng CK cho từng thí sinh
+    #    (gộp trung bình theo bài, rồi SUM các bài)
+    score_qs = (
+        PhieuChamDiem.objects
+        .filter(cuocThi=ct, baiThi_id__in=bt_ids)
+        .values("thiSinh__maNV", "baiThi_id")
+        .annotate(avg=Avg("diem"))
+    )
+    # tích lũy SUM(avg) theo thí sinh
+    total_by_ma = {}
+    for r in score_qs:
+        ma = r["thiSinh__maNV"]
+        total_by_ma[ma] = total_by_ma.get(ma, 0.0) + float(r["avg"] or 0.0)
+
+    # 4) Đối kháng: trung bình sao theo BattleVote cho CT này
+    #    BattleVote.entry -> ThiSinhCapThiDau -> pair -> cuocThi
+    #    Lấy TB sao theo thiSinh (entry.thiSinh.maNV)
+    battle_qs = (
+        BattleVote.objects
+        .filter(entry__pair__cuocThi=ct)
+        .values("entry__thiSinh__maNV")
+        .annotate(avg=Avg("stars"))
+    )
+    stars_by_ma = {r["entry__thiSinh__maNV"]: (float(r["avg"]) if r["avg"] is not None else None)
+                   for r in battle_qs}
+
+    # 5) Duyệt thí sinh của CT & build rows
+    ts_qs = ThiSinh.objects.filter(cuocThi=ct).order_by("maNV").distinct()
+    def _sv(x): return "" if x is None else str(x)
+
+    rows = []
+    for idx, ts in enumerate(ts_qs, start=1):
+        tong = round(total_by_ma.get(ts.maNV, 0.0), 2)
+        sao = stars_by_ma.get(ts.maNV, None)
+        sao_fmt = (f"{sao:.1f}" if sao is not None else "")
+
+        row = [
+            idx,
+            _sv(getattr(ts, "maNV", "")),
+            _sv(getattr(ts, "hoTen", "")),
+            _sv(getattr(ts, "donVi", "")),
+            _sv(getattr(ts, "chiNhanh", "")),
+            _sv(getattr(ts, "vung", "")),
+            _sv(getattr(ts, "nhom", "")),
+            _sv(getattr(ts, "email", "")),
+            tong,
+            sao_fmt,
+        ]
+        rows.append(row)
+
+    return columns, rows
+
+def export_final_page(request):
+    """
+    Trang web Export Chung Kết (bảng Excel-like).
+    Cố định CT = 'Chung Kết' (không hiển thị dropdown chọn CT).
+    """
+    ct = _find_chung_ket()
+    if not ct:
+        return render(request, "export/index.html", {
+            "contest": None,
+            "columns": [],
+            "rows": [],
+            "FROZEN_COUNT": 3,
+            "final_mode": True,   # flag cho UI nếu muốn
+            "error": "Chưa tạo cuộc thi 'Chung Kết'."
+        })
+
+    columns, rows = _final_columns_and_rows(ct)
+    return render(request, "export/index.html", {
+        "contest": ct,
+        "columns": columns,
+        "rows": rows,
+        "FROZEN_COUNT": 3,
+        "final_mode": True
+    })
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from io import BytesIO
+
+def export_final_xlsx(request):
+    """
+    Xuất XLSX cho Chung Kết (giống export-xlsx nhưng chỉ 2 cột điểm).
+    """
+    ct = _find_chung_ket()
+    if not ct:
+        return HttpResponse("Chưa có 'Chung Kết'", status=400)
+
+    columns, rows = _final_columns_and_rows(ct)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{ct.ma}"
+
+    # Header
+    ws.append(columns)
+    for c in range(1, len(columns)+1):
+        cell = ws.cell(row=1, column=c)
+        cell.font = Font(bold=True, size=12)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    # Body
+    for r in rows:
+        ws.append(r)
+
+    out = BytesIO()
+    wb.save(out)
+    out.seek(0)
+    resp = HttpResponse(out.read(),
+                        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp["Content-Disposition"] = f'attachment; filename="export_chungket_{ct.ma}.xlsx"'
+    return resp

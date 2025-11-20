@@ -35,17 +35,22 @@
           <th>Mã QR</th>
         </tr>
       </thead>
-      <tbody>
-        {% for b in bgds %}
-        <tr>
-          <td>{{ b.maBGD }}</td>
-          <td>{{ b.ten }}</td>
-          <td>
-            <a href="{% url 'bgd-qr-one' b.token %}" class="btn">Xem QR</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
+  <tbody>
+    {% for it in bgds %}
+      <tr>
+        <td>{{ it.maBGD }}</td>
+        <td>{{ it.ten }}</td>
+        <td>
+          {% if it.has_judge %}
+            <a class="btn" href="{% url 'bgd-qr' %}?focus={{ it.token }}">Xem QR</a>
+          {% else %}
+            <span class="badge" style="background:#fca5a5;color:#111;">BGD chưa có trong danh sách BGK</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+
     </table>
   {% else %}
     <div class="empty">Không có Ban Giám Đốc nào trong hệ thống.</div>

@@ -8,24 +8,36 @@
         Tổ chức cuộc thi, chấm điểm theo vòng/bài, và xem xếp hạng theo thời gian thực.
       </p>
 
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8">
-        <a href="/score" class="glass rounded-xl p-5 hover:bg-white/10 transition">
-          <div class="text-lg font-semibold mb-1">Chấm điểm</div>
-          <div class="opacity-80 text-sm">Nhập/chỉnh điểm theo Vòng → Bài.</div>
-        </a>
-        <a href="/organize/competitions" class="glass rounded-xl p-5 hover:bg-white/10 transition">
-          <div class="text-lg font-semibold mb-1">Tạo cuộc thi</div>
-          <div class="opacity-80 text-sm">Quản lý Cuộc thi, Vòng, Bài.</div>
-        </a>
-        <a href="/ranking" class="glass rounded-xl p-5 hover:bg-white/10 transition">
-          <div class="text-lg font-semibold mb-1">Xếp hạng</div>
-          <div class="opacity-80 text-sm">Bảng xếp hạng theo tổng điểm.</div>
-        </a>
-        <a href="/management" class="glass rounded-xl p-5 hover:bg-white/10 transition">
-          <div class="text-lg font-semibold mb-1">Quản lý</div>
-          <div class="opacity-80 text-sm">Đi tới khu vực quản trị.</div>
-        </a>
-      </div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8">
+  <!-- Chấm điểm: cho mọi người (hoặc ai vào được link) -->
+  <a href="/score" class="glass rounded-xl p-5 hover:bg-white/10 transition">
+    <div class="text-lg font-semibold mb-1">Chấm điểm</div>
+    <div class="opacity-80 text-sm">Nhập/chỉnh điểm theo Vòng → Bài.</div>
+  </a>
+
+  <!-- Tạo cuộc thi: chỉ admin -->
+  {% if is_admin %}
+  <a href="/organize/competitions" class="glass rounded-xl p-5 hover:bg-white/10 transition">
+    <div class="text-lg font-semibold mb-1">Tạo cuộc thi</div>
+    <div class="opacity-80 text-sm">Quản lý Cuộc thi, Vòng, Bài.</div>
+  </a>
+  {% endif %}
+
+  <!-- Xếp hạng: ai cũng xem được -->
+  <a href="/ranking" class="glass rounded-xl p-5 hover:bg-white/10 transition">
+    <div class="text-lg font-semibold mb-1">Xếp hạng</div>
+    <div class="opacity-80 text-sm">Bảng xếp hạng theo tổng điểm.</div>
+  </a>
+
+  <!-- Quản lý: chỉ admin -->
+  {% if is_admin %}
+  <a href="/management" class="glass rounded-xl p-5 hover:bg-white/10 transition">
+    <div class="text-lg font-semibold mb-1">Quản lý</div>
+    <div class="opacity-80 text-sm">Đi tới khu vực quản trị.</div>
+  </a>
+  {% endif %}
+</div>
+
     </div>
   </div>
 {% endblock %}

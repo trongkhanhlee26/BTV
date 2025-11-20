@@ -138,11 +138,20 @@ def _make_bgd_dual_qr_image(bgd, request):
     return canvas
 
 
-# ====== NEW: trang /bgd hiển thị danh sách BGD ======
 def bgd_list(request):
-    bgds = BanGiamDoc.objects.order_by("maBGD")
-    # Không có bản ghi nào cũng KHÔNG lỗi, template sẽ tự in "Không có Ban Giám Đốc"
-    return render(request, "bgd/list.html", {"bgds": bgds})
+    out = []
+    for b in BanGiamDoc.objects.order_by("maBGD"):
+        has = GiamKhao.objects.filter(
+            maNV=b.maBGD,
+            hoTen__iexact=b.ten,   # so sánh cả mã & họ tên (không phân biệt hoa/thường)
+        ).exists()
+        out.append({
+            "maBGD": b.maBGD,
+            "ten": b.ten,
+            "token": b.token,
+            "has_judge": has,
+        })
+    return render(request, "bgd/list.html", {"bgds": out})
 
 
 # --- 1) Trang QR: hiển thị QR cho BGD (1 hình gồm 2 mã QR) ---
