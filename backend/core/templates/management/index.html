@@ -7,6 +7,7 @@
 
 /* Chỉ áp dụng trong vùng dashboard để không ảnh hưởng navbar */
 #dashboard .sidebar{
+  margin-top: 22px;
   width:240px; min-width:240px; border-radius:16px;
   background:linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.10));
   border-right:1px solid rgba(255,255,255,.28);
@@ -21,6 +22,13 @@
   backdrop-filter:blur(20px) saturate(112%);      /* ↓ blur nhẹ hơn */
   -webkit-backdrop-filter:blur(20px) saturate(112%);
   box-shadow:0 6px 24px rgba(0,0,0,.10);
+}
+
+
+/* Khung riêng cho bảng xếp hạng thí sinh: chỉ khung này cuộn dọc */
+#dashboard .ranking-table-wrapper {
+  max-height: calc(90vh - 260px);  /* thu thấp hơn một chút để toàn dashboard fit màn hình */
+  overflow-y: auto;
 }
 
 
@@ -91,6 +99,14 @@
                 <span>Export</span>
             </a>
         </div>
+        <div class="mt-2 p-3 bg-white/5 rounded-xl">
+  <div class="text-sm opacity-80 mb-2">Báo cáo Chung Kết</div>
+  <a href="/export-final"
+     class="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg">
+    <img src="{% static 'icons/download.svg' %}" class="h-4 w-4" alt="">
+    <span>Export Chung Kết</span>
+  </a>
+</div>
     </aside>
 
     <!-- Nội dung -->
@@ -144,44 +160,43 @@
 
                 <!-- HÀNG DƯỚI: tách thành GRID RIÊNG để 2 cột cao bằng nhau -->
                 <div class="xl:col-span-12 grid xl:grid-cols-12 gap-6 items-stretch">
-                    <!-- Trái: Bảng xếp hạng -->
-                    <div class="xl:col-span-7 glass p-6 h-full">
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-lg font-semibold">Xếp hạng thí sinh</h3>
-                            <a href="/ranking?ct={{ contest.id }}"
-                                class="text-sm underline opacity-90 hover:opacity-100">Xem đầy đủ</a>
-                        </div>
-                        <div class="overflow-x-auto overflow-y-auto max-h-[680px] rounded-xl ring-1 ring-white/10">
-                            <table class="min-w-full text-sm text-white">
-                                <thead class="sticky top-0 z-10"
-                                    style="background: rgba(15,23,42,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.12);">
-                                    <tr>
-                                        <th class="px-3 py-2 text-left">#</th>
-                                        <th class="px-3 py-2 text-left">Mã NV</th>
-                                        <th class="px-3 py-2 text-left">Họ tên</th>
-                                        <th class="px-3 py-2 text-left">Đơn vị</th>
-                                        <th class="px-3 py-2 text-left">Tổng</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="[&_tr]:h-12">
-                                    {% for r in rows %}
-                                    <tr
-                                        class="border-b border-white/10 {% if forloop.counter <= 3 %}bg-white/5{% endif %}">
-                                        <td class="px-3 py-2">{{ forloop.counter }}</td>
-                                        <td class="px-3 py-2">{{ r.maNV }}</td>
-                                        <td class="px-3 py-2">{{ r.hoTen }}</td>
-                                        <td class="px-3 py-2">{{ r.donVi }}</td>
-                                        <td class="px-3 py-2">{{ r.total|floatformat:2 }}</td>
-                                    </tr>
-                                    {% empty %}
-                                    <tr>
-                                        <td colspan="5" class="text-center opacity-70 py-4">Chưa có dữ liệu</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+<!-- Trái: Bảng xếp hạng -->
+<div class="xl:col-span-7 glass p-6 h-full flex flex-col">
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold">Xếp hạng thí sinh</h3>
+        <a href="/ranking?ct={{ contest.id }}"
+           class="text-sm underline opacity-90 hover:opacity-100">Xem đầy đủ</a>
+    </div>
+    <div class="ranking-table-wrapper overflow-x-auto rounded-xl ring-1 ring-white/10">
+        <table class="min-w-full text-sm text-white">
+            <thead class="sticky top-0 z-10"
+                   style="background: rgba(15,23,42,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.12);">
+                <tr>
+                    <th class="px-3 py-2 text-left">#</th>
+                    <th class="px-3 py-2 text-left">Mã NV</th>
+                    <th class="px-3 py-2 text-left">Họ tên</th>
+                    <th class="px-3 py-2 text-left">Đơn vị</th>
+                    <th class="px-3 py-2 text-left">Tổng</th>
+                </tr>
+            </thead>
+            <tbody class="[&_tr]:h-12">
+                {% for r in rows %}
+                <tr class="border-b border-white/10 {% if forloop.counter <= 3 %}bg-white/5{% endif %}">
+                    <td class="px-3 py-2">{{ forloop.counter }}</td>
+                    <td class="px-3 py-2">{{ r.maNV }}</td>
+                    <td class="px-3 py-2">{{ r.hoTen }}</td>
+                    <td class="px-3 py-2">{{ r.donVi }}</td>
+                    <td class="px-3 py-2">{{ r.total|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center opacity-70 py-4">Chưa có dữ liệu</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 
                     <!-- Phải: 4 ô + banner bám đáy -->
                     <div class="xl:col-span-5 h-full flex flex-col gap-6">
