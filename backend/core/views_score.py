@@ -6,8 +6,31 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db import transaction
 from django.db.models import Avg, Q, Max
 from core.decorators import judge_required
-from .models import (CuocThi, VongThi, BaiThi, ThiSinh, GiamKhao, PhieuChamDiem, ThiSinhCuocThi, BaiThiTemplateItem, BaiThiTemplateSection, GiamKhaoBaiThi)
+from .models import (
+    CuocThi,
+    VongThi,
+    BaiThi,
+    ThiSinh,
+    GiamKhao,
+    PhieuChamDiem,
+    ThiSinhCuocThi,
+    BaiThiTemplateItem,
+    BaiThiTemplateSection,
+    GiamKhaoBaiThi,
+    BanGiamDoc,   # 👈 thêm dòng này
+)
 import json
+import unicodedata     # 👈 thêm dòng này
+
+BGD_SESSION_KEYS = ("bgd_mode", "bgd_ct_id", "bgd_ct_name", "bgd_token")
+
+def _bgd_active(request) -> bool:
+    """Chỉ true khi có cờ session và ĐANG ở route score-bgd (đi từ QR)."""
+    return (
+        request.session.get("bgd_mode") == "score"
+        and getattr(request, "resolver_match", None)
+        and request.resolver_match.url_name == "score-bgd"
+    )
 
 def _pick_competition(preferred_id: int | None):
     """
@@ -83,22 +106,70 @@ def _active_competition():
 
 def _judge_is_admin(judge: GiamKhao | None) -> bool:
     return bool(judge and str(getattr(judge, "role", "")).upper() == "ADMIN")
+def _normalize_no_diacritics(s: str) -> str:
+    """
+    Bỏ dấu + lowercase + bỏ khoảng trắng để so sánh tên cuộc thi.
+    'Chung Kết' -> 'chungket', 'CK' -> 'ck'
+    """
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    return s.lower().strip().replace(" ", "")
 
-def _assigned_bai_qs(ct: CuocThi, judge: GiamKhao | None, vt: VongThi | None = None):
+
+def _is_chung_ket(ct: CuocThi | None) -> bool:
+    """
+    Kiểm tra 1 Cuộc thi có phải 'Chung Kết' / 'Chung Ket' / 'CK' (không phân biệt hoa/thường, có/không dấu).
+    """
+    if not ct:
+        return False
+    norm = _normalize_no_diacritics(getattr(ct, "tenCuocThi", ""))
+    return norm in {"chungket", "ck"}
+
+
+def _judge_is_bgd(judge: GiamKhao | None) -> bool:
+    """
+    Giám khảo đồng thời là BGD nếu:
+      - có bản ghi BanGiamDoc trùng maBGD = maNV
+      - ưu tiên khớp thêm họ tên (không phân biệt hoa/thường).
+    """
+    if not judge:
+        return False
+    try:
+        qs = BanGiamDoc.objects.filter(maBGD=judge.maNV)
+        if not qs.exists():
+            return False
+        if qs.filter(ten__iexact=judge.hoTen).exists():
+            return True
+        # fallback: chỉ cần đúng mã
+        return True
+    except Exception:
+        return False
+
+def _assigned_bai_qs(ct: CuocThi, judge: GiamKhao | None, vt: VongThi | None = None, bgd_active: bool = False):
     """
     Trả về queryset BaiThi theo cuộc thi/vòng thi.
     - ADMIN: thấy tất cả.
-    - JUDGE: chỉ thấy những bài được phân công (GiamKhaoBaiThi).
+    - BGD: CHỈ khi bgd_active=True (đi từ QR) VÀ cuộc thi là 'Chung Kết' → thấy tất cả.
+    - JUDGE thường: chỉ thấy những bài được phân công (GiamKhaoBaiThi).
     """
     base = BaiThi.objects.filter(vongThi__cuocThi=ct)
     if vt:
         base = base.filter(vongThi=vt)
+
+    if not judge:
+        return base.none()
+
     if _judge_is_admin(judge):
         return base
-    if judge:
-        return base.filter(giam_khao_duoc_chi_dinh__giamKhao=judge)
-    # không có judge -> không trả gì
-    return base.none()
+
+    # 🔒 Chỉ nới quyền BGD khi vào đúng luồng QR và là cuộc thi Chung Kết
+    if bgd_active and _judge_is_bgd(judge) and _is_chung_ket(ct):
+        return base
+
+    return base.filter(giam_khao_duoc_chi_dinh__giamKhao=judge)
+
 
 # after
 def _load_form_data(selected_ts, ct, request):
@@ -137,11 +208,13 @@ def _load_form_data(selected_ts, ct, request):
     for vt in vongs:
         bais = []
         
+        bgd_on = _bgd_active(request)
         for bt in (
-            _assigned_bai_qs(ct, judge, vt=vt)
+            _assigned_bai_qs(ct, judge, vt=vt, bgd_active=bgd_on)
             .order_by("id")
             .prefetch_related("time_rules", "template_sections__items")
         ):
+
             if _is_time(bt):
                 rules = list(bt.time_rules.all()) if hasattr(bt, "time_rules") else []
                 this_max = 20
@@ -303,12 +376,12 @@ def score_view(request):
                 "message": "Bài thi không hợp lệ trong vòng đã chọn."
             }, status=400)
 
-        # 🔒 Chỉ lấy đúng 1 bài thi được phân công cho giám khảo
         bai_qs = (
-            _assigned_bai_qs(ct, judge, vt=vt_obj)
+            _assigned_bai_qs(ct, judge, vt=vt_obj, bgd_active=_bgd_active(request))
             .filter(pk=bt_obj.pk)
             .prefetch_related("time_rules", "template_sections__items")
         )
+
         if not bai_qs.exists():
             return JsonResponse({
                 "ok": False,
@@ -477,6 +550,23 @@ def score_view(request):
     ct_param = request.GET.get("ct")
     vt_param = request.GET.get("vt")
     bt_param = request.GET.get("bt")
+    # Nếu vào trang chấm thường → tắt dấu vết BGD từ QR
+    if getattr(request, "resolver_match", None) and request.resolver_match.url_name == "score":
+        for k in BGD_SESSION_KEYS:
+            request.session.pop(k, None)
+
+    # === BGD MODE: chỉ bật khi vào /score/bgd/ (đi từ QR) ===
+    is_bgd_score = _bgd_active(request)
+    ck_candidates = []
+    if is_bgd_score:
+        ck_id = request.session.get("bgd_ct_id")
+        if ck_id:
+            ct_param = str(ck_id)  # ép về CK (dù người dùng sửa URL)
+            ck_candidates = list(
+                ThiSinh.objects.filter(cuocThi__id=ck_id)
+                .order_by("maNV").values("maNV", "hoTen", "donVi")[:1000]
+            )
+
 
 
     # AJAX gợi ý: chỉ trả JSON {maNV, hoTen}; bắt buộc phải chọn Cuộc thi đang bật
@@ -549,12 +639,12 @@ def score_view(request):
         vt_qs = VongThi.objects.filter(cuocThi=ct).order_by("id")
         rounds = []
         for vt in vt_qs:
-           if _judge_is_admin(judge_for_render) or _assigned_bai_qs(ct, judge_for_render, vt=vt).exists():
+            if _judge_is_admin(judge_for_render) or _assigned_bai_qs(ct, judge_for_render, vt=vt, bgd_active=_bgd_active(request)).exists():
                 rounds.append({"id": vt.id, "tenVongThi": vt.tenVongThi})
         if vt_param:
             selected_vt = VongThi.objects.filter(cuocThi=ct, id=vt_param).first()
             if selected_vt:
-                tests_qs = _assigned_bai_qs(ct, judge_for_render, vt=selected_vt).order_by("id")
+                tests_qs = _assigned_bai_qs(ct, judge_for_render, vt=selected_vt, bgd_active=_bgd_active(request)).order_by("id")
                 tests = list(tests_qs.values("id", "ma", "tenBaiThi"))
                 if bt_param:
                     selected_bt = BaiThi.objects.filter(vongThi=selected_vt, id=bt_param).first()
@@ -608,14 +698,14 @@ def score_view(request):
                          .order_by("id"))
                 rounds = []
                 for vt in vt_qs:
-                    if _judge_is_admin(judge) or _assigned_bai_qs(ct_obj, judge, vt=vt).exists():
+                    if _judge_is_admin(judge) or _assigned_bai_qs(ct_obj, judge, vt=vt, bgd_active=_bgd_active(request)).exists():
                         rounds.append({"id": vt.id, "tenVongThi": vt.tenVongThi})
                 data["rounds"] = rounds
 
                 if vt_id:
                     vt_obj = VongThi.objects.filter(cuocThi=ct_obj, id=vt_id).first()
                     if vt_obj:
-                        tests_qs = _assigned_bai_qs(ct_obj, judge, vt=vt_obj).order_by("id")
+                        tests_qs = _assigned_bai_qs(ct_obj, judge, vt=vt_obj, bgd_active=_bgd_active(request)).order_by("id")
                         data["tests"] = list(
                             tests_qs.values("id", "ma", "tenBaiThi")
                         )
@@ -639,6 +729,9 @@ def score_view(request):
         "tests": tests,
         "selected_vt_id": selected_vt.id if selected_vt else None,
         "selected_bt_id": selected_bt.id if selected_bt else None,
+        "is_bgd_score": is_bgd_score,
+        "locked_ct_name": request.session.get("bgd_ct_name") if is_bgd_score else None,
+        "bgd_candidates": ck_candidates,  # list dict {maNV, hoTen, donVi}
 
         "range60": range(60),
     })
@@ -651,10 +744,24 @@ def score_template_api(request, btid: int):
     bt = get_object_or_404(BaiThi.objects.prefetch_related("template_sections__items"), pk=btid)
     if str(bt.phuongThucCham).upper() != "TEMPLATE":
         return JsonResponse({"ok": False, "message": "Bài thi này không phải chấm theo mẫu."}, status=400)
+
     judge = _current_judge(request)
-    if not _judge_is_admin(judge):
+    if not judge:
+        return JsonResponse({"ok": False, "message": "Bạn chưa đăng nhập giám khảo."}, status=401)
+
+    # Xác định cuộc thi của bài thi này
+    ct_of_bt = getattr(bt.vongThi, "cuocThi", None)
+
+    # Admin: luôn được
+    # BGD (đồng thời là Giám khảo) trong 'Chung Kết': cũng luôn được
+    # Admin: luôn được
+    # BGD: CHỈ khi đi từ QR (/score/bgd/) và là 'Chung Kết'
+    bgd_on = _bgd_active(request)
+    if not (_judge_is_admin(judge) or (bgd_on and _judge_is_bgd(judge) and _is_chung_ket(ct_of_bt))):
         if not GiamKhaoBaiThi.objects.filter(giamKhao=judge, baiThi=bt).exists():
             return JsonResponse({"ok": False, "message": "Bạn không được phân công chấm bài này."}, status=403)
+
+
     if request.method == "GET":
         try:
             # kiểm tra loại bài là TEMPLATE 

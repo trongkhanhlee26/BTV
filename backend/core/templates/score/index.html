@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}Chấm điểm{% endblock %}
-<!doctype html>
-<html lang="vi">
+
 
 {% block head_extra %}
   <style>
@@ -444,8 +443,7 @@
       background: linear-gradient(
         to bottom, 
         rgba(17,24,39,.65), 
-        transparen
-        t 25%, 
+        transparent 25%, 
         transparent 75%, 
         rgba(17,24,39,.65)
       );
@@ -467,40 +465,67 @@
   <div class="container">
     <!-- after -->
     <form id="searchForm" method="get" class="card" style="display:flex; flex-direction:column; gap:12px;">
-
+      <div id="pageFlags" data-bgd="{{ is_bgd_score|yesno:'1,0' }}"></div>
       {% if competitions and competitions|length > 0 %}
         <div class="field">
           <label>Cuộc thi:</label>
-          <div class="select-wrap">
-            <select id="ctSelect" name="ct" class="input">
-              <option value="">— Chọn cuộc thi —</option>
-              {% for c in competitions %}
-                <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
-                  {{ c.ma }} — {{ c.tenCuocThi }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
+<div class="select-wrap">
+{% if is_bgd_score %}
+  <select id="ctSelect" name="ct" class="input" disabled title="Đang ở chế độ BGD — khóa vào cuộc thi Chung Kết">
+    <option value="{{ selected_ct_id }}" selected>
+      {{ locked_ct_name }}
+    </option>
+  </select>
+  {# GIỮ ct trong các lần submit vì select đang disabled #}
+  <input type="hidden" name="ct" value="{{ selected_ct_id }}">
+  <div class="muted" style="margin-top:6px">
+    Chế độ BGD: đang chấm <b>{{ locked_ct_name }}</b>
+  </div>
+{% else %}
+  <!-- nhánh GK thường giữ nguyên -->
+  <select id="ctSelect" name="ct" class="input">
+    <option value="">— Chọn cuộc thi —</option>
+    {% for c in competitions %}
+      <option value="{{ c.id }}" {% if selected_ct_id and c.id == selected_ct_id %}selected{% endif %}>
+        {{ c.ma }} — {{ c.tenCuocThi }}
+      </option>
+    {% endfor %}
+  </select>
+{% endif %}
+
+</div>
+
         </div>
       {% else %}
         <div class="card">Chưa có <b>Cuộc thi</b> nào được bật. Vào <a href="/organize/">/organize/</a> để tạo/bật.</div>
       {% endif %}
 
 
-      <!-- Ô nhập NV hoặc họ tên đặt sau Cuộc thi -->
-      <div class="row" style="flex-direction:column; align-items:flex-start; gap:8px; position: relative;">
-        <label>Nhập mã NV hoặc họ tên:</label>
-        <div class="field">
-          <input id="searchInput" class="input" type="text" name="q" value="{{ query }}" placeholder="VD: TS001 hoặc Nguyễn Văn A">
-        </div>
-        <div id="suggestBox" class="suggest" style="margin-top:6px; width:100%; display:none">
-          {% if suggestions %}
-            {% for s in suggestions %}
-              <a href="/score/?ts={{ s.maNV }}&ct={{ selected_ct_id }}">{{ s.maNV }} — {{ s.hoTen }}</a>
-            {% endfor %}
-          {% endif %}
-        </div>
-      </div>
+<div class="row" style="flex-direction:column; align-items:flex-start; gap:8px; position: relative;">
+  <label>Thí sinh:</label>
+
+  {% if is_bgd_score %}
+    <!-- Ẩn input gõ chữ; dùng input readOnly để hiển thị lựa chọn -->
+    <div class="field">
+      <input id="searchInput" class="input" type="text" value="{% if selected_ts %}{{ selected_ts.maNV }} — {{ selected_ts.hoTen }}{% endif %}"
+             placeholder="Nhấn để chọn thí sinh Chung Kết" readonly>
+      <input id="tsHidden" type="hidden" name="ts" value="{% if selected_ts %}{{ selected_ts.maNV }}{% endif %}">
+    </div>
+    <!-- KHÔNG hiển thị dropdown gợi ý mặc định -->
+  {% else %}
+    <div class="field">
+      <input id="searchInput" class="input" type="text" name="q" value="{{ query }}" placeholder="VD: TS001 hoặc Nguyễn Văn A">
+    </div>
+    <div id="suggestBox" class="suggest" style="margin-top:6px; width:100%; display:none">
+      {% if suggestions %}
+        {% for s in suggestions %}
+          <a href="/score/?ts={{ s.maNV }}&ct={{ selected_ct_id }}">{{ s.maNV }} — {{ s.hoTen }}</a>
+        {% endfor %}
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
 
       {% if competitions and competitions|length > 0 %}
       <div style="display:flex; flex-direction:column; gap:10px;">
@@ -624,7 +649,7 @@
                 <span id="preview-total-{{ b.id }}" class="ml-2 muted">
                   {% if b.current != None %}Tổng: {{ b.current|floatformat:0 }}{% else %}Chưa chấm{% endif %}
                 </span>
-                <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" data-max="{{ b.max }}" value = "{% if b.current != None %}{{ b.current|floatformat:0 }}{% endif %}>
+                <input type="hidden" name="score_{{ b.id }}" id="score-input-{{ b.id }}" data-max="{{ b.max }}" value="{% if b.current != None %}{{ b.current|floatformat:0 }}{% endif %}">
                 <input type="hidden" name="tpl_time_{{ b.id }}" id="tpl-time-{{ b.id }}" value="">
               </div>
               {% else %}
@@ -706,6 +731,24 @@
       </div>
     </div>
   </div>
+{% if is_bgd_score %}
+{{ bgd_candidates|json_script:"bgd-candidates-data" }}
+  <script>
+    window.BGD_MODE = true;
+    window.BGD_CANDIDATES = JSON.parse(document.getElementById('bgd-candidates-data').textContent);
+  </script>
+
+  <div id="bgdTsModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <h4>Chọn thí sinh Chung Kết</h4>
+      <input id="bgdTsSearch" class="input" placeholder="Tìm theo mã hoặc tên..." style="margin:8px 0">
+      <div id="bgdTsList" class="suggest" style="display:block; max-height:320px;"></div>
+      <div class="modal-actions" style="margin-top:8px">
+        <button id="bgdClose" class="btn" type="button">Đóng</button>
+      </div>
+    </div>
+  </div>
+{% endif %}
 
   <script src="{% static 'core/score.js' %}?v={% now 'U' %}"></script>
 {% endblock %}

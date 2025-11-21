@@ -68,16 +68,11 @@ function debounce(fn, delay = 250) {
   };
 }
 
-// === Suggestion helpers ===
-function buildSuggestURL(q, ctVal) {
-  // Nếu bạn dùng endpoint khác, đổi ở đây (vd: `/score/suggest/?q=...&ct=...`)
-  const params = new URLSearchParams({
-    ajax: 'suggest',
-    q: q || '',
-    ct: ctVal || ''
-  });
-  return `/score/?${params.toString()}`;
-}
+ function buildSuggestURL(q, ctVal) {
+   const base = location.pathname.startsWith('/score/bgd') ? '/score/bgd/' : '/score/';
+   const params = new URLSearchParams({ ajax: 'suggest', q: q || '', ct: ctVal || '' });
+   return `${base}?${params.toString()}`;
+ }
 
 function renderSuggestions(box, list) {
   if (!box) return;
@@ -515,7 +510,8 @@ function saveTplScores() {
 
           // 4) Nạp rounds từ server
           try {
-            const data = await fetchJSON(`/score/?ajax=meta&ct=${encodeURIComponent(ct)}`);
+            const base = location.pathname.startsWith('/score/bgd') ? '/score/bgd/' : '/score/';
+            const data = await fetchJSON(`${base}?ajax=meta&ct=${encodeURIComponent(ct)}`);
             // fillSelect sẽ tự bật/tắt disabled dựa trên độ dài mảng
             fillSelect(vtSelect, data.rounds || [], (v) => new Option(v.tenVongThi, v.id));
             // Bài thi luôn reset rỗng khi mới chọn CT
@@ -765,7 +761,8 @@ saveBtn.addEventListener('click', async () => {
               if (vt) params.set('vt', vt);
               if (bt) params.set('bt', bt);
 
-              const url = params.toString() ? `/score/?${params}` : '/score/';
+              const base = location.pathname.startsWith('/score/bgd') ? '/score/bgd/' : '/score/';
+              const url  = params.toString() ? `${base}?${params}` : base;
               window.location.href = url;
             }, 800);
             } catch (e) {
@@ -940,4 +937,84 @@ function initTimeWheels() {
     });
   });
 }
+document.addEventListener('DOMContentLoaded', () => {
+  if (!window.BGD_MODE) return;
+
+  const input = document.getElementById('searchInput');
+  const tsHidden = document.getElementById('tsHidden');
+  const modal = document.getElementById('bgdTsModal');
+  const listBox = document.getElementById('bgdTsList');
+  const searchBox = document.getElementById('bgdTsSearch');
+  const btnClose = document.getElementById('bgdClose');
+
+  // Mở modal khi bấm vào input
+  input.addEventListener('click', () => {
+    renderList(window.BGD_CANDIDATES);
+    modal.style.display = 'flex';
+    searchBox.value = '';
+    searchBox.focus();
+  });
+
+  btnClose.addEventListener('click', () => { modal.style.display = 'none'; });
+
+  // Lọc danh sách theo gõ nhanh
+  searchBox.addEventListener('input', () => {
+    const q = (searchBox.value || '').toLowerCase().trim();
+    const filtered = window.BGD_CANDIDATES.filter(x =>
+      x.maNV.toLowerCase().includes(q) || x.hoTen.toLowerCase().includes(q)
+    );
+    renderList(filtered);
+  });
+
+  function renderList(arr){
+    listBox.innerHTML = arr.map(
+      x => `<a href="#" data-manv="${x.maNV}">${x.maNV} — ${x.hoTen}${x.donVi?` <span class="muted">(${x.donVi})</span>`:''}</a>`
+    ).join('');
+    Array.from(listBox.querySelectorAll('a')).forEach(a=>{
+      a.addEventListener('click', (e)=>{
+        e.preventDefault();
+        const code = a.getAttribute('data-manv');
+        const label = a.textContent.replace(/\s+\(.+\)\s*$/,'');
+        tsHidden.value = code;
+        input.value = label;
+        modal.style.display = 'none';
+      })
+    });
+  }
+
+  // Ngăn dropdown gợi ý thường
+  const suggestBox = document.getElementById('suggestBox');
+  if (suggestBox) suggestBox.style.display = 'none';
+
+  // Khi submit, yêu cầu: đã chọn Vòng thi + đúng 1 Bài thi + đã chọn TS
+  const form = document.getElementById('searchForm');
+  form.addEventListener('submit', (e)=>{
+    const ctSel = document.getElementById('ctSelect');
+    const vtSel = document.getElementById('vtSelect');
+    const btSel = document.getElementById('btSelect');
+
+    // vt & bt bắt buộc (giữ đúng hành vi mới)
+    if (!vtSel || !vtSel.value || !btSel || !btSel.value) {
+      e.preventDefault();
+      showHint("Vui lòng chọn <b>Vòng thi</b> và đúng <b>1 Bài thi</b> trước khi bấm Tìm.");
+      return;
+    }
+
+    if (!tsHidden.value) {
+      e.preventDefault();
+      showHint("Vui lòng chọn thí sinh của Chung Kết (bấm vào ô để chọn).");
+      return;
+    }
+  });
+
+  // helper toast/hint có sẵn trong file
+  function showHint(html){
+    const card = document.getElementById('searchHintCard');
+    const txt = document.getElementById('searchHintText');
+    if (!card || !txt) return;
+    txt.innerHTML = html;
+    card.style.display = 'block';
+    setTimeout(()=> card.style.display='none', 3500);
+  }
+});
 
