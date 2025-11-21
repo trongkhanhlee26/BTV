@@ -154,7 +154,6 @@ def bgd_list(request):
     return render(request, "bgd/list.html", {"bgds": out})
 
 
-# --- 1) Trang QR: hiển thị QR cho BGD (1 hình gồm 2 mã QR) ---
 def bgd_qr_index(request, token=None):
     items = list(
         BanGiamDoc.objects
@@ -169,17 +168,23 @@ def bgd_qr_index(request, token=None):
     for it in items:
         it["url"] = _go_url(it["token"])
 
-    # Nếu có token => xoay list để BGD đó nằm đầu (hiện ra trước)
-    if token and items:
+    # Ưu tiên:
+    # 1) token trong path (/bgd/qr/<token>/)
+    # 2) focus trong query string (?focus=<token>)
+    focus_token = token or request.GET.get("focus")
+
+    # Nếu có focus_token => xoay list để BGD đó nằm đầu (hiện ra trước)
+    if focus_token and items:
         try:
-            idx = next(i for i, it in enumerate(items) if it["token"] == token)
+            idx = next(i for i, it in enumerate(items) if it["token"] == focus_token)
             if idx != 0:
                 items = items[idx:] + items[:idx]
         except StopIteration:
-            # token không tồn tại vẫn không lỗi, chỉ đơn giản là giữ nguyên list
+            # token không tồn tại thì giữ nguyên list
             pass
 
     return render(request, "bgd/qr.html", {"items": items})
+
 
 
 def bgd_qr_png(request, token: str):
